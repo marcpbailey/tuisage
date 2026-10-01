@@ -183,6 +183,7 @@ pub struct App {
 
     /// Current color theme.
     pub theme_name: ThemeName,
+    pub automatic_theme: bool,
 
     /// Path of subcommand names derived from the tree selection.
     /// Empty means we're at the root command.
@@ -274,6 +275,7 @@ impl App {
             mode: AppMode::Builder,
             execution: None,
             theme_name,
+            automatic_theme: false,
             command_path: Vec::new(),
             command_panel,
             flag_panel: FilterableComponent::new(FlagPanelComponent::new()),
@@ -323,11 +325,13 @@ impl App {
 
     /// Cycle to the next theme.
     pub fn next_theme(&mut self) {
+        self.automatic_theme = false;
         self.theme_name = self.theme_name.next();
     }
 
     /// Cycle to the previous theme.
     pub fn prev_theme(&mut self) {
+        self.automatic_theme = false;
         self.theme_name = self.theme_name.prev();
     }
 
@@ -387,6 +391,7 @@ impl App {
                 self.theme_name = name;
             }
             ThemePickerAction::Confirmed => {
+                self.automatic_theme = false;
                 // Theme already set by preview — nothing to do.
             }
             ThemePickerAction::Cancelled(original) => {

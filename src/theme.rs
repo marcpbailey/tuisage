@@ -87,3 +87,85 @@ impl UiColors {
         }
     }
 }
+
+/// CLI appearance selection, reusing the dependency's name parser and registry.
+#[derive(Clone, Copy)]
+pub enum ThemeSelection {
+    Fixed(ratatui_themes::ThemeName),
+    Auto { light: ratatui_themes::ThemeName, dark: ratatui_themes::ThemeName },
+}
+
+impl ThemeSelection {
+    pub fn parse(name: Option<&str>, light: Option<ratatui_themes::ThemeName>, dark: Option<ratatui_themes::ThemeName>) -> color_eyre::Result<Self> {
+        if name == Some("auto") {
+            return match (light, dark) {
+                (Some(light), Some(dark)) => Ok(Self::Auto { light, dark }),
+                _ => Err(color_eyre::eyre::eyre!("--theme auto requires both --theme-light and --theme-dark")),
+            };
+        }
+        if light.is_some() || dark.is_some() {
+            return Err(color_eyre::eyre::eyre!("--theme-light and --theme-dark require --theme auto"));
+        }
+        let theme = name.map(str::parse).transpose().map_err(|e| color_eyre::eyre::eyre!("{}", e))?.unwrap_or_default();
+        Ok(Self::Fixed(theme))
+    }
+
+    pub fn is_automatic(self) -> bool { matches!(self, Self::Auto { .. }) }
+
+    pub fn initial(self) -> ratatui_themes::ThemeName {
+        match self {
+            Self::Fixed(name) => name,
+            Self::Auto { light, dark } => if system_is_light().unwrap_or(false) { light } else { dark },
+        }
+    }
+
+    pub fn watch(self) -> Option<std::sync::mpsc::Receiver<ratatui_themes::ThemeName>> {
+        if !self.is_automatic() { return None; }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || loop {
+            if tx.send(self.initial()).is_err() { break; }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        });
+        Some(rx)
+    }
+}
+
+/// System appearance takes priority. Terminal COLORFGBG is a separate fallback.
+fn system_is_light() -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("/usr/bin/defaults").args(["read", "-g", "AppleInterfaceStyle"]).output().ok()?;
+        return Some(!output.status.success() || !String::from_utf8_lossy(&output.stdout).trim().eq_ignore_ascii_case("dark"));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if cfg!(target_os = "linux") {
+            if let Ok(output) = std::process::Command::new("gdbus").args(["call", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path", "/org/freedesktop/portal/desktop", "--method", "org.freedesktop.portal.Settings.Read", "org.freedesktop.appearance", "color-scheme"]).output() {
+                if output.status.success() {
+                    let value = String::from_utf8_lossy(&output.stdout);
+                    if value.contains("uint32 1") { return Some(false); }
+                    if value.contains("uint32 2") { return Some(true); }
+                }
+            }
+        }
+        let value = std::env::var("COLORFGBG").ok()?;
+        let background: u8 = value.rsplit(';').next()?.parse().ok()?;
+        Some(background >= 7)
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+    use ratatui_themes::ThemeName;
+
+    #[test]
+    fn validates_names_and_auto_pair() {
+        assert!(ThemeSelection::parse(Some("missing"), None, None).is_err());
+        assert!(ThemeSelection::parse(Some("auto"), Some(ThemeName::CatppuccinLatte), None).is_err());
+        assert!(ThemeSelection::parse(None, Some(ThemeName::Nord), None).is_err());
+        assert_eq!(ThemeSelection::parse(Some("catppuccin-latte"), None, None).unwrap().initial(), ThemeName::CatppuccinLatte);
+        assert_eq!(ThemeSelection::parse(Some("catppuccin_latte"), None, None).unwrap().initial(), ThemeName::CatppuccinLatte);
+        assert_eq!(ThemeSelection::parse(None, None, None).unwrap().initial(), ThemeName::default());
+    }
+}
