@@ -93,6 +93,14 @@ CLI tools with many subcommands, flags, and arguments are difficult to use from 
 - Exit cleanly with no output when the user quits the application.
 - Support `--usage` flag to output TuiSage's own usage spec and exit, enabling self-describing CLI integration.
 
+### Initial values and locks
+
+- Accept typed JSON initial values for string fields, boolean flags, and count flags, from either a command argument or a JSON file.
+- Identify fields without ambiguity across global flags, root fields, and command-local fields.
+- Reject unknown fields, conflicting identifiers, invalid types, and values outside declared choices before terminal startup.
+- Allow values to be editable by default or locked across keyboard, mouse, completion, and reset paths.
+- Preserve explicitly supplied empty values separately from omitted fields.
+
 ## Non-Functional Requirements
 
 ### Input Methods

@@ -76,6 +76,21 @@ pub fn format_flag_value(
                 Some(format!("{prefix} {s}"))
             }
         }
+        FlagValue::Strings(values) => {
+            let prefix = if let Some(long) = flag.long.first() {
+                format!("--{long}")
+            } else if let Some(short) = flag.short.first() {
+                format!("-{short}")
+            } else {
+                return None;
+            };
+            let rendered = if values.len() == 1 && values[0].is_empty() {
+                "\"\"".to_string()
+            } else {
+                values.join(" ")
+            };
+            Some(format!("{prefix} {rendered}"))
+        }
     }
 }
 
@@ -133,6 +148,20 @@ pub fn format_flag_parts(
                 return;
             }
             parts.push(s.clone());
+        }
+        FlagValue::Strings(values) => {
+            let Some(prefix) = flag
+                .long
+                .first()
+                .map(|long| format!("--{long}"))
+                .or_else(|| flag.short.first().map(|short| format!("-{short}")))
+            else {
+                return;
+            };
+            for value in values {
+                parts.push(prefix.clone());
+                parts.push(value.clone());
+            }
         }
     }
 }
@@ -223,8 +252,10 @@ pub fn build_command(
     // Positional arg values (with live preview)
     for (i, arg) in arg_values.iter().enumerate() {
         let value = effective_arg_value(i, arg, preview);
-        if !value.is_empty() {
-            if value.contains(' ') {
+        if arg.supplied || !value.is_empty() {
+            if value.is_empty() {
+                parts.push("\"\"".to_string());
+            } else if value.contains(' ') {
                 parts.push(format!("\"{value}\""));
             } else {
                 parts.push(value.to_string());
@@ -285,7 +316,7 @@ pub fn build_command_parts(
 
     // Positional arg values (unquoted — each is a separate process arg)
     for arg in arg_values {
-        if !arg.value.is_empty() {
+        if arg.supplied || !arg.value.is_empty() {
             parts.push(arg.value.clone());
         }
     }

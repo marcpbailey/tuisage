@@ -6,6 +6,7 @@ use clap::{CommandFactory, Parser};
 
 mod app;
 mod command_builder;
+mod defaults;
 mod components;
 mod theme;
 mod ui;
@@ -27,6 +28,10 @@ struct Args {
     /// Generate usage spec for this tool
     #[arg(long)]
     usage: bool,
+
+    /// Initial field values as JSON, or @PATH to a JSON file
+    #[arg(long)]
+    defaults: Option<String>,
 
     /// Command to run to get the usage spec (e.g., "mycli --usage")
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -94,11 +99,20 @@ fn main() -> color_eyre::Result<()> {
         spec.bin = cmd.clone();
     }
 
+    let initial = args
+        .defaults
+        .as_deref()
+        .map(|text| defaults::parse(text, &spec))
+        .transpose()?;
+
     // Enable mouse capture before initializing the terminal
     crossterm::execute!(std::io::stderr(), crossterm::event::EnableMouseCapture)?;
 
     let mut terminal = ratatui::init();
     let mut app = App::new(spec);
+    if let Some(initial) = initial {
+        app.configure_defaults(initial);
+    }
     let result = run_event_loop(&mut terminal, &mut app);
 
     // Restore terminal and disable mouse capture

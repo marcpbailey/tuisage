@@ -89,6 +89,10 @@ You can combine these as well:
 tuisage --cmd "docker compose" --spec-file docker-compose.usage.kdl
 ```
 
+### Initial field values
+
+Use `--defaults JSON` to initialize fields from an object, or `--defaults @PATH` to read that object from a file. Keys may use unqualified names when they identify one field, or qualified identifiers such as `commands/run/args/name`. Each entry has a `value` and an optional `locked` boolean. Locked values cannot be changed through editing, mouse selection, completion, or reset. Empty strings are retained as explicit values.
+
 ## CLI Reference
 
 | Flag | Description |

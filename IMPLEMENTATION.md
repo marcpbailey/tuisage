@@ -273,6 +273,10 @@ Snapshot tests cover: root view, subcommand views, flag toggling, argument editi
 | Commands list always visible | The flat indented list shows the entire command hierarchy, not just subcommands of the current selection. It remains visible even when navigating to leaf commands with no children, providing constant wayfinding context. |
 | Arguments panel visibility based on spec | The arguments panel is shown whenever the current command defines arguments in the spec, ensuring consistent visibility regardless of whether arg values are populated. |
 
+## Initial values and field locks
+
+`src/defaults.rs` parses typed JSON values, resolves unambiguous field identifiers, and applies values and locks to app state. `--defaults JSON` accepts inline JSON; `--defaults @PATH` reads a JSON file. Locked fields reject mutation through the app action paths. Reset restores locked initial values after clearing command state. Explicit empty strings are represented as supplied values so command construction preserves them.
+
 ## Remaining Work
 
 - **Clipboard copy** — copy the built command to the system clipboard from within the TUI

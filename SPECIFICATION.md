@@ -534,3 +534,7 @@ The `ExecutionState` struct holds:
 - `pty_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>` — input channel to the process
 - `exited: Arc<AtomicBool>` — whether the child has finished
 - `exit_status: Arc<Mutex<Option<String>>>` — the exit code/signal description
+
+## Initial values and field locks
+
+`--defaults JSON` or `--defaults @PATH` supplies an object whose keys identify fields and whose entries contain a typed `value` and optional `locked` boolean. A qualified identifier uses `global/flags/name`, `root/flags/name`, `root/args/name`, or `commands/path/to/command/flags/name` and `args/name`. Path segments escape `~` as `~0` and `/` as `~1`. An unqualified name is accepted only when it matches one field. Invalid identifiers, conflicting names, type mismatches, and undeclared choice values fail before terminal startup. Explicit empty strings remain supplied values. Locked fields reject keyboard, mouse, completion, and reset changes. Editable initial values behave as normal field values.
