@@ -177,6 +177,7 @@ impl UiLayout {
 /// Main application state.
 pub struct App {
     pub spec: Spec,
+    pub submission_error: Option<String>,
     pub initial_fields: Vec<crate::defaults::InitialField>,
 
     /// Current app mode (builder vs executing).
@@ -276,6 +277,7 @@ impl App {
         let mut app = Self {
             spec,
             initial_fields: Vec::new(),
+            submission_error: None,
             mode: AppMode::Builder,
             execution: None,
             theme_name,

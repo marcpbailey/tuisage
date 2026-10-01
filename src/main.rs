@@ -10,8 +10,10 @@ mod command_builder;
 mod components;
 mod defaults;
 mod fields;
+mod provider;
 mod theme;
 mod ui;
+mod validation;
 
 use app::App;
 
@@ -67,6 +69,10 @@ struct Args {
     /// Generate usage spec for this tool
     #[arg(long)]
     usage: bool,
+
+    /// Additional validation executable using JSON stdin/stdout
+    #[arg(long)]
+    validate: Option<PathBuf>,
 
     /// Initial field values as JSON, or @PATH to a JSON file
     #[arg(long)]
@@ -176,7 +182,7 @@ fn main() -> color_eyre::Result<()> {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(tty))?;
     let mut app = App::new(spec);
     if let Some(initial) = initial { app.configure_defaults(initial); }
-    let result = run_event_loop(&mut terminal, &mut app, args.compose);
+    let result = run_event_loop(&mut terminal, &mut app, args.compose, args.validate.as_deref());
     drop(terminal);
     drop(guard);
 
@@ -250,6 +256,7 @@ fn run_event_loop(
     terminal: &mut AppTerminal,
     app: &mut App,
     compose: bool,
+    validator: Option<&std::path::Path>,
 ) -> color_eyre::Result<Option<ComposedCommand>> {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
@@ -295,12 +302,8 @@ fn run_event_loop(
                     app::Action::None => {}
                     app::Action::Quit => return Ok(None),
                     app::Action::Execute => {
-                        app.finish_editing();
-                        if compose {
-                            return Ok(Some(ComposedCommand::from_parts(
-                                app.build_command_parts(),
-                            )?));
-                        }
+                        if !app.validate_submission(validator) { continue; }
+                        if compose { return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?)); }
                         execute_current_command(terminal, app)?;
                     }
                 }
@@ -309,12 +312,8 @@ fn run_event_loop(
                 app::Action::None => {}
                 app::Action::Quit => return Ok(None),
                 app::Action::Execute => {
-                    app.finish_editing();
-                    if compose {
-                        return Ok(Some(ComposedCommand::from_parts(
-                            app.build_command_parts(),
-                        )?));
-                    }
+                    if !app.validate_submission(validator) { continue; }
+                    if compose { return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?)); }
                     execute_current_command(terminal, app)?;
                 }
             },
