@@ -7,6 +7,7 @@ use clap::{CommandFactory, Parser};
 
 mod app;
 mod command_builder;
+mod completion;
 mod components;
 mod defaults;
 mod fields;
@@ -268,6 +269,7 @@ fn run_event_loop(
     use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
     loop {
+        app.poll_completion();
         terminal.draw(|frame| ui::render(frame, app))?;
 
         // Use polling when in execution mode so we can refresh the terminal output
@@ -293,7 +295,11 @@ fn run_event_loop(
             continue;
         }
 
-        // Normal builder mode: blocking event read
+        // Poll while a completion provider is running, otherwise block for input.
+        if app.pending_completion.is_some() && !event::poll(Duration::from_millis(100))? {
+            continue;
+        }
+        // Normal builder mode
         match event::read()? {
             Event::Key(key) => {
                 if key.kind != KeyEventKind::Press {

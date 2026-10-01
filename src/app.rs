@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::process::Command;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
@@ -177,6 +178,10 @@ impl UiLayout {
 /// Main application state.
 pub struct App {
     pub spec: Spec,
+    pub pending_completion: Option<crate::completion::Pending>,
+    pub completion_generation: u64,
+    pub completion_tx: std::sync::mpsc::Sender<crate::completion::ResultMessage>,
+    pub completion_rx: std::sync::mpsc::Receiver<crate::completion::ResultMessage>,
     pub submission_error: Option<String>,
     pub initial_fields: Vec<crate::defaults::InitialField>,
 
@@ -274,10 +279,15 @@ impl App {
         let tree_nodes = build_command_tree(&spec);
         let command_panel = FilterableComponent::new(CommandPanelComponent::new(tree_nodes));
 
+        let (completion_tx, completion_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             spec,
             initial_fields: Vec::new(),
             submission_error: None,
+            pending_completion: None,
+            completion_generation: 0,
+            completion_tx,
+            completion_rx,
             mode: AppMode::Builder,
             execution: None,
             theme_name,
@@ -807,11 +817,12 @@ impl App {
     /// Find a `complete` directive for the given argument name on the current command.
     pub fn find_completion(&self, arg_name: &str) -> Option<&usage::SpecComplete> {
         let cmd = self.current_command();
-        cmd.complete.get(arg_name)
+        cmd.complete.get(arg_name).or_else(|| self.spec.complete.get(arg_name))
     }
 
     /// Run a completion command and parse its output into (choices, descriptions).
     /// When `descriptions` is true, each line is parsed as "value:description".
+    #[cfg(test)]
     pub fn run_completion(
         run_cmd: &str,
         descriptions: bool,
@@ -826,7 +837,12 @@ impl App {
             return None;
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let results = Self::parse_completion_output(&output.stdout, descriptions);
+        if results.0.is_empty() { None } else { Some(results) }
+    }
+
+    pub fn parse_completion_output(output: &[u8], descriptions: bool) -> (Vec<String>, Vec<Option<String>>) {
+        let stdout = String::from_utf8_lossy(output);
         let mut choices = Vec::new();
         let mut descs = Vec::new();
 
@@ -850,11 +866,7 @@ impl App {
             }
         }
 
-        if choices.is_empty() {
-            return None;
-        }
-
-        Some((choices, descs))
+        (choices, descs)
     }
 
     /// Run completion command and return results.
@@ -1619,35 +1631,12 @@ impl App {
                     })
                     .unwrap_or(current_value);
                 if let Some(ref arg_name) = arg_name {
-                    if let Some((choices, descriptions)) =
-                        self.run_flag_completion(arg_name, &current_value)
-                    {
-                        self.flag_panel.open_completion_select(
-                            index,
-                            choices,
-                            descriptions,
-                            &current_value,
-                            value_column,
-                        );
-                        return;
-                    }
+                    if self.start_completion(true, index, arg_name, value_column) { return; }
                 }
 
                 self.flag_panel.start_editing(&current_value);
             }
         }
-    }
-
-    /// Run a completion command for a flag argument and return results.
-    /// Does NOT open the choice select — caller is responsible.
-    fn run_flag_completion(
-        &self,
-        arg_name: &str,
-        _current_value: &str,
-    ) -> Option<(Vec<String>, Vec<Option<String>>)> {
-        let complete = self.find_completion(arg_name)?.clone();
-        let run_cmd = complete.run.as_ref()?;
-        Self::run_completion(run_cmd, complete.descriptions)
     }
 
     fn process_arg_enter_request(&mut self, request: ArgPanelEnterRequest) {
@@ -1677,32 +1666,11 @@ impl App {
                     .get(index)
                     .map(|arg| arg.value.clone())
                     .unwrap_or(current_value);
-                if let Some((choices, descriptions)) =
-                    self.run_arg_completion(&arg_name, &current_value)
-                {
-                    self.arg_panel.open_completion_select(
-                        index,
-                        choices,
-                        descriptions,
-                        &current_value,
-                        value_column,
-                    );
-                } else {
+                if !self.start_completion(false, index, &arg_name, value_column) {
                     self.arg_panel.start_editing(&current_value);
                 }
             }
         }
-    }
-
-    /// Run a completion command for an arg and return results.
-    fn run_arg_completion(
-        &self,
-        arg_name: &str,
-        _current_value: &str,
-    ) -> Option<(Vec<String>, Vec<Option<String>>)> {
-        let complete = self.find_completion(arg_name)?.clone();
-        let run_cmd = complete.run.as_ref()?;
-        Self::run_completion(run_cmd, complete.descriptions)
     }
 
     /// Toggle a Bool, NegBool, or Count flag at the current index.
@@ -5386,6 +5354,7 @@ cmd "run" {
             crossterm::event::KeyModifiers::NONE,
         );
         app.handle_key(enter);
+        app.wait_for_completion();
 
         assert!(app.is_choosing());
         // Verify the arg panel opened a choice select with descriptions
@@ -5409,6 +5378,7 @@ cmd "run" {
             crossterm::event::KeyModifiers::NONE,
         );
         app.handle_key(enter);
+        app.wait_for_completion();
 
         if !app.is_choosing() {
             // Skip if completion command not available in this environment
@@ -5656,6 +5626,7 @@ cmd "run" {
             crossterm::event::KeyModifiers::NONE,
         );
         app.handle_key(enter);
+        app.wait_for_completion();
         assert!(app.is_choosing(), "Should open choice select for completions");
 
         // Navigate down to item 12 to cause scrolling
@@ -5710,6 +5681,7 @@ cmd "run" {
             crossterm::event::KeyModifiers::NONE,
         );
         app.handle_key(enter);
+        app.wait_for_completion();
         assert!(app.is_choosing(), "Should open choice select for completions");
         assert!(
             app.arg_panel.is_editing(),
