@@ -2364,6 +2364,7 @@ dependencies = [
  "ratatui-themes",
  "serde",
  "serde_json",
+ "shell-words",
  "tui-term",
  "usage-lib",
  "vt100",

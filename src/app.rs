@@ -72,6 +72,8 @@ pub enum FlagValue {
     String(String),
     /// Explicit string values, including empty values.
     Strings(Vec<String>),
+    /// An explicitly supplied empty string value.
+    EmptyString,
     /// Count flag (e.g., -vvv).
     Count(u32),
 }
@@ -563,11 +565,11 @@ impl App {
     /// Apply a string value to the flag at the given visible index.
     fn apply_flag_string_value(&mut self, flag_idx: usize, value: &str) {
         if self.flag_locked(flag_idx) { return; }
-        let new_value = FlagValue::String(value.into());
-        let name = self.current_flag_values().get(flag_idx).map(|(name, _)| name.clone());
-        if let Some(name) = name {
+        let flag_name = self.current_flag_values().get(flag_idx).map(|(name, _)| name.clone());
+        if let Some(flag_name) = flag_name {
+            let new_value = if value.is_empty() { FlagValue::EmptyString } else { FlagValue::String(value.to_string()) };
             if let Some((_, current)) = self.current_flag_values_mut().get_mut(flag_idx) { *current = new_value.clone(); }
-            self.sync_global_flag(&name, &new_value);
+            self.sync_global_flag(&flag_name, &new_value);
             self.refresh_flag_panel_inputs();
         }
     }
@@ -646,7 +648,7 @@ impl App {
                                 let new_val = FlagValue::String(String::new());
                                 self.sync_global_flag(&flag_name, &new_val);
                             }
-                            FlagValue::Strings(_) => {
+                            FlagValue::Strings(_) | FlagValue::EmptyString => {
                                 *value = FlagValue::String(String::new());
                                 self.sync_global_flag(&flag_name, &FlagValue::String(String::new()));
                             }
@@ -1487,6 +1489,7 @@ impl App {
                     .get(flag_idx)
                     .and_then(|(_, v)| match v {
                         FlagValue::String(s) => Some(s.clone()),
+                        FlagValue::EmptyString => Some(String::new()),
                         FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
                         _ => None,
                     })
@@ -1564,6 +1567,7 @@ impl App {
                     .get(index)
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
+                        FlagValue::EmptyString => Some(String::new()),
                         FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
                         _ => None,
                     })
@@ -1582,6 +1586,7 @@ impl App {
                     .get(index)
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
+                        FlagValue::EmptyString => Some(String::new()),
                         FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
                         _ => None,
                     })
@@ -3807,6 +3812,24 @@ cmd "other" {
         assert!(parts.contains(&"hello world".to_string()));
         // Should NOT contain quotes
         assert!(!parts.iter().any(|p| p.contains('"')));
+    }
+
+    #[test]
+    fn explicit_empty_arg_appears_in_preview_and_command_parts() {
+        let spec = r#"
+name "fake"
+cmd "run" {
+    arg "[value]"
+}
+"#
+        .parse::<Spec>()
+        .expect("Failed to parse empty-argument test spec");
+        let mut app = App::new(spec);
+        app.navigate_to_command(&["run"]);
+        app.set_arg_value(0, String::new());
+
+        assert_eq!(app.build_command(), "fake run \"\"");
+        assert_eq!(app.build_command_parts(), vec!["fake", "run", ""]);
     }
 
     #[test]

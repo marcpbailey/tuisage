@@ -6,7 +6,11 @@ use crate::app::{ArgValue, FlagValue};
 
 /// Resolve the flag spec for a given name, checking the provided flags first,
 /// then falling back to global flags on the root command.
-fn find_flag_spec<'a>(name: &str, flags: &'a [SpecFlag], global_flags: &'a [SpecFlag]) -> Option<&'a SpecFlag> {
+fn find_flag_spec<'a>(
+    name: &str,
+    flags: &'a [SpecFlag],
+    global_flags: &'a [SpecFlag],
+) -> Option<&'a SpecFlag> {
     flags
         .iter()
         .find(|f| f.name == name)
@@ -27,10 +31,9 @@ pub fn format_flag_value(
         FlagValue::Bool(true) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             Some(prefix)
         }
@@ -39,10 +42,9 @@ pub fn format_flag_value(
         FlagValue::NegBool(Some(true)) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             Some(prefix)
         }
@@ -62,13 +64,20 @@ pub fn format_flag_value(
             }
         }
         FlagValue::String(s) if s.is_empty() => None,
+        FlagValue::EmptyString => {
+            let prefix = flag
+                .long
+                .first()
+                .map(|long| format!("--{long}"))
+                .or_else(|| flag.short.first().map(|short| format!("-{short}")))?;
+            Some(format!("{prefix} \"\""))
+        }
         FlagValue::String(s) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             if s.contains(' ') {
                 Some(format!("{prefix} \"{s}\""))
@@ -139,6 +148,16 @@ pub fn format_flag_parts(
             }
         }
         FlagValue::String(s) if s.is_empty() => {}
+        FlagValue::EmptyString => {
+            if let Some(long) = flag.long.first() {
+                parts.push(format!("--{long}"));
+            } else if let Some(short) = flag.short.first() {
+                parts.push(format!("-{short}"));
+            } else {
+                return;
+            }
+            parts.push(String::new());
+        }
         FlagValue::String(s) => {
             if let Some(long) = flag.long.first() {
                 parts.push(format!("--{long}"));
@@ -281,9 +300,7 @@ pub fn build_command_parts(
     } else {
         &spec.bin
     };
-    for word in bin.split_whitespace() {
-        parts.push(word.to_string());
-    }
+    parts.extend(shell_words::split(bin).expect("validated base command"));
 
     // Global flag values from root
     let root_key = String::new();
