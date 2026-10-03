@@ -1,6 +1,6 @@
 use crate::app::{App, FlagValue};
 use crate::defaults::field_id;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
