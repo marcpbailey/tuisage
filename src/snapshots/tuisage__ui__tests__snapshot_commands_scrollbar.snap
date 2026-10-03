@@ -13,4 +13,4 @@ expression: output
 │  run                       Run a task│┌ Arguments ───────────────────────────────────────────────┐
 │▶ deploy        Deploy the application││  ● <environment> = <dev|staging|prod>  Target environment│
 └──────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- ↑↓ navigate  ⇥ next  / filter  ^r run  q quit                                         T: [Dracula]
+ ↑↓ navigate  ⇥ next  / filter  ^u reset  ^r run  q quit                               T: [Dracula]
