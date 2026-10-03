@@ -188,9 +188,12 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn write_provider(directory: &tempfile::TempDir, body: &str) -> std::path::PathBuf {
+    fn write_provider(body: &str) -> std::path::PathBuf {
         use std::os::unix::fs::PermissionsExt;
-        let path = directory.path().join("provider");
+        let path = std::env::temp_dir().join(format!(
+            "tuisage-validation-provider-{}",
+            std::process::id()
+        ));
         std::fs::write(&path, body).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
         path
@@ -199,17 +202,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn provider_accepts_rejects_malformed_and_failed_responses() {
-        let directory = tempfile::tempdir().unwrap();
         let spec: usage::Spec = "name \"demo\"".parse().unwrap();
 
         let accepted = write_provider(
-            &directory,
             "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"version\":1,\"errors\":{}}'\n",
         );
         assert!(App::new(spec.clone()).validate_submission(Some(&accepted)));
 
         let rejected = write_provider(
-            &directory,
             "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"version\":1,\"errors\":{\"root/args/name\":\"Rejected\"}}'\n",
         );
         let mut app = App::new(spec.clone());
@@ -219,14 +219,12 @@ mod tests {
             .unwrap()
             .contains("root/args/name: Rejected"));
 
-        let malformed = write_provider(
-            &directory,
-            "#!/bin/sh\ncat >/dev/null\nprintf '%s' broken\n",
-        );
+        let malformed = write_provider("#!/bin/sh\ncat >/dev/null\nprintf '%s' broken\n");
         assert!(!App::new(spec.clone()).validate_submission(Some(&malformed)));
 
-        let failed = write_provider(&directory, "#!/bin/sh\ncat >/dev/null\nexit 3\n");
+        let failed = write_provider("#!/bin/sh\ncat >/dev/null\nexit 3\n");
         assert!(!App::new(spec).validate_submission(Some(&failed)));
+        std::fs::remove_file(failed).unwrap();
     }
 
     #[test]
