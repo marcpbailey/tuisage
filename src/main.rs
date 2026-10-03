@@ -7,7 +7,6 @@ use clap::{CommandFactory, Parser};
 
 mod app;
 mod command_builder;
-mod completion;
 mod components;
 mod defaults;
 mod fields;
