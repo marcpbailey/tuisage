@@ -8,6 +8,7 @@ use clap::{CommandFactory, Parser};
 mod app;
 mod command_builder;
 mod components;
+mod completion;
 mod defaults;
 mod fields;
 mod provider;
