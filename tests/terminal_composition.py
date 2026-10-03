@@ -1,9 +1,11 @@
 """PTY acceptance checks with stdout redirected independently of the terminal."""
 import errno
+import fcntl
 import json
 import os
 from pathlib import Path
 import select
+import struct
 import sys
 import tempfile
 import termios
@@ -20,11 +22,14 @@ def session(args, keys, expected_status=0, close_when_file_exists=None):
         os.close(write_out)
         os.execv(str(BINARY), [str(BINARY), *args])
     os.close(write_out)
+    fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
     before = termios.tcgetattr(terminal)
     screen = bytearray()
     output = bytearray()
     started = time.monotonic()
-    sent = False
+    key_steps = keys if isinstance(keys, list) else [(0.1, keys)]
+    sent = 0
+    ready_at = None
     last_close_sent = None
     status = None
     while time.monotonic() - started < 10:
@@ -39,10 +44,13 @@ def session(args, keys, expected_status=0, close_when_file_exists=None):
                 screen.extend(data)
             else:
                 output.extend(data)
-        if not sent and b'\x1b[?1049h' in screen:
-            time.sleep(0.1)
-            os.write(terminal, keys)
-            sent = True
+        if ready_at is None and b'\x1b[?1049h' in screen:
+            ready_at = time.monotonic()
+        if ready_at is not None and sent < len(key_steps):
+            delay, sequence = key_steps[sent]
+            if time.monotonic() - ready_at >= delay:
+                os.write(terminal, sequence)
+                sent += 1
         if (
             close_when_file_exists
             and close_when_file_exists.exists()
@@ -107,7 +115,11 @@ with tempfile.TemporaryDirectory() as directory:
         validation_args = ['--validate', str(provider), '--spec-file', str(spec)]
         if compose:
             validation_args.insert(0, '--compose')
-        output, screen = session(validation_args, b'\x12\x03', expected_status=expected_status)
+        output, screen = session(
+            validation_args,
+            [(0.1, b'\x12'), (0.5, b'\x03')],
+            expected_status=expected_status,
+        )
         assert output == b''
         assert b'Validation failed' in screen
         assert not marker.exists(), 'rejected validation ran the operational command'
