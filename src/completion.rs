@@ -1,8 +1,8 @@
+use crate::app::App;
+use crate::defaults::field_id;
 use serde::Deserialize;
 use serde_json::Value;
 use usage::SpecComplete;
-use crate::app::App;
-use crate::defaults::field_id;
 
 type Choices = (Vec<String>, Vec<Option<String>>);
 #[derive(Clone)]
@@ -15,49 +15,113 @@ pub struct Pending {
     pub column: u16,
     pub context: Value,
 }
-pub struct ResultMessage { pub generation: u64, pub choices: Option<Choices> }
+pub struct ResultMessage {
+    pub generation: u64,
+    pub choices: Option<Choices>,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Response { version: u32, choices: Vec<Choice> }
+struct Response {
+    version: u32,
+    choices: Vec<Choice>,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Choice { value: String, #[serde(default)] description: Option<String> }
+struct Choice {
+    value: String,
+    #[serde(default)]
+    description: Option<String>,
+}
 
 fn run(complete: &SpecComplete, context: &Value) -> Option<Choices> {
-    if let Some(program) = complete.type_.as_deref().and_then(|s| s.strip_prefix("tuisage-json-v1:")) {
+    if let Some(program) = complete
+        .type_
+        .as_deref()
+        .and_then(|s| s.strip_prefix("tuisage-json-v1:"))
+    {
         let bytes = crate::provider::run(std::path::Path::new(program), context).ok()?;
         let response: Response = serde_json::from_slice(&bytes).ok()?;
-        if response.version != 1 { return None; }
-        return Some(response.choices.into_iter().map(|choice| (choice.value, choice.description)).unzip());
+        if response.version != 1 {
+            return None;
+        }
+        return Some(
+            response
+                .choices
+                .into_iter()
+                .map(|choice| (choice.value, choice.description))
+                .unzip(),
+        );
     }
     let command = complete.run.as_ref()?;
-    let output = std::process::Command::new("sh").args(["-c", command]).env("TUISAGE_CONTEXT", context.to_string()).env("TUISAGE_CONTEXT_VERSION", "1").output().ok()?;
-    if !output.status.success() { return None; }
-    Some(App::parse_completion_output(&output.stdout, complete.descriptions))
+    let output = std::process::Command::new("sh")
+        .args(["-c", command])
+        .env("TUISAGE_CONTEXT", context.to_string())
+        .env("TUISAGE_CONTEXT_VERSION", "1")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(App::parse_completion_output(
+        &output.stdout,
+        complete.descriptions,
+    ))
 }
 
 impl App {
     pub fn start_completion(&mut self, flag: bool, index: usize, name: &str, column: u16) -> bool {
-        let Some(complete) = self.find_completion(name).cloned() else { return false; };
-        if complete.run.is_none() && !complete.type_.as_deref().is_some_and(|s| s.starts_with("tuisage-json-v1:")) { return false; }
+        let Some(complete) = self.find_completion(name).cloned() else {
+            return false;
+        };
+        if complete.run.is_none()
+            && !complete
+                .type_
+                .as_deref()
+                .is_some_and(|s| s.starts_with("tuisage-json-v1:"))
+        {
+            return false;
+        }
         let field = if flag {
-            let Some(spec) = self.visible_flags().get(index).copied() else { return false; };
+            let Some(spec) = self.visible_flags().get(index).copied() else {
+                return false;
+            };
             field_id(&self.command_path, "flags", &spec.name, spec.global)
         } else {
-            let Some(arg) = self.arg_values.get(index) else { return false; };
+            let Some(arg) = self.arg_values.get(index) else {
+                return false;
+            };
             field_id(&self.command_path, "args", &arg.name, false)
         };
         let context = crate::provider::context(self, Some(&field));
         self.completion_generation += 1;
         let generation = self.completion_generation;
-        let pending = Pending { generation, ready: false, flag, index, name: name.into(), column, context: context.clone() };
+        let pending = Pending {
+            generation,
+            ready: false,
+            flag,
+            index,
+            name: name.into(),
+            column,
+            context: context.clone(),
+        };
         let tx = self.completion_tx.clone();
-        std::thread::spawn(move || { let choices = run(&complete, &context); let _ = tx.send(ResultMessage { generation, choices }); });
+        std::thread::spawn(move || {
+            let choices = run(&complete, &context);
+            let _ = tx.send(ResultMessage {
+                generation,
+                choices,
+            });
+        });
         self.pending_completion = Some(pending);
         let value = self.completion_value(flag, index);
-        if flag { self.flag_panel.open_completion_select(index, vec![], vec![], &value, column); }
-        else { self.arg_panel.open_completion_select(index, vec![], vec![], &value, column); }
+        if flag {
+            self.flag_panel
+                .open_completion_select(index, vec![], vec![], &value, column);
+        } else {
+            self.arg_panel
+                .open_completion_select(index, vec![], vec![], &value, column);
+        }
         true
     }
 
@@ -66,39 +130,83 @@ impl App {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         while self.pending_completion.as_ref().is_some_and(|p| !p.ready) {
             self.poll_completion();
-            assert!(std::time::Instant::now() < deadline, "completion did not finish");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "completion did not finish"
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 
     fn completion_value(&self, flag: bool, index: usize) -> String {
         if flag {
-            self.current_flag_values().get(index).map(|(_, value)| match value {
-                crate::app::FlagValue::String(value) => value.clone(),
-                crate::app::FlagValue::Strings(values) => values.last().cloned().unwrap_or_default(),
-                crate::app::FlagValue::EmptyString => String::new(),
-                _ => String::new(),
-            }).unwrap_or_default()
-        } else { self.arg_values.get(index).map(|arg| arg.value.clone()).unwrap_or_default() }
+            self.current_flag_values()
+                .get(index)
+                .map(|(_, value)| match value {
+                    crate::app::FlagValue::String(value) => value.clone(),
+                    crate::app::FlagValue::Strings(values) => {
+                        values.last().cloned().unwrap_or_default()
+                    }
+                    crate::app::FlagValue::EmptyString => String::new(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default()
+        } else {
+            self.arg_values
+                .get(index)
+                .map(|arg| arg.value.clone())
+                .unwrap_or_default()
+        }
     }
 
     pub fn poll_completion(&mut self) {
         if let Some(pending) = self.pending_completion.clone() {
-            let open = if pending.flag { self.flag_panel.choice_select_index() == Some(pending.index) } else { self.arg_panel.choice_select_index() == Some(pending.index) };
-            if !open { self.pending_completion = None; }
-            else if crate::provider::context(self, pending.context["field"].as_str()) != pending.context {
+            let open = if pending.flag {
+                self.flag_panel.choice_select_index() == Some(pending.index)
+            } else {
+                self.arg_panel.choice_select_index() == Some(pending.index)
+            };
+            if !open {
+                self.pending_completion = None;
+            } else if crate::provider::context(self, pending.context["field"].as_str())
+                != pending.context
+            {
                 self.start_completion(pending.flag, pending.index, &pending.name, pending.column);
             }
         }
         while let Ok(message) = self.completion_rx.try_recv() {
-            let Some(pending) = self.pending_completion.clone() else { continue; };
-            if pending.generation != message.generation { continue; }
-            if crate::provider::context(self, pending.context["field"].as_str()) != pending.context { continue; }
+            let Some(pending) = self.pending_completion.clone() else {
+                continue;
+            };
+            if pending.generation != message.generation {
+                continue;
+            }
+            if crate::provider::context(self, pending.context["field"].as_str()) != pending.context
+            {
+                continue;
+            }
             let value = self.completion_value(pending.flag, pending.index);
             let (choices, descriptions) = message.choices.unwrap_or_default();
-            if pending.flag { self.flag_panel.open_completion_select(pending.index, choices, descriptions, &value, pending.column); }
-            else { self.arg_panel.open_completion_select(pending.index, choices, descriptions, &value, pending.column); }
-            if let Some(pending) = self.pending_completion.as_mut() { pending.ready = true; }
+            if pending.flag {
+                self.flag_panel.open_completion_select(
+                    pending.index,
+                    choices,
+                    descriptions,
+                    &value,
+                    pending.column,
+                );
+            } else {
+                self.arg_panel.open_completion_select(
+                    pending.index,
+                    choices,
+                    descriptions,
+                    &value,
+                    pending.column,
+                );
+            }
+            if let Some(pending) = self.pending_completion.as_mut() {
+                pending.ready = true;
+            }
             // Retain context for future dependent changes, without polling a provider repeatedly.
         }
     }
@@ -119,20 +227,36 @@ mod tests {
         app.current_flag_values_mut()[0].1 = FlagValue::String("new".into());
         app.poll_completion();
         assert!(app.completion_generation > old);
-        app.completion_tx.send(ResultMessage { generation: old, choices: Some((vec!["stale".into()], vec![None])) }).unwrap();
+        app.completion_tx
+            .send(ResultMessage {
+                generation: old,
+                choices: Some((vec!["stale".into()], vec![None])),
+            })
+            .unwrap();
         app.poll_completion();
-        assert_eq!(app.pending_completion.as_ref().unwrap().context["fields"]["global/flags/backend"], "new");
+        assert_eq!(
+            app.pending_completion.as_ref().unwrap().context["fields"]["global/flags/backend"],
+            "new"
+        );
         app.wait_for_completion();
         let choices = app.arg_panel.filtered_choices();
         assert_eq!(choices.len(), 1);
         assert!(choices[0].1.contains("new"));
-        app.completion_tx.send(ResultMessage { generation: old, choices: Some((vec!["stale".into()], vec![None])) }).unwrap();
+        app.completion_tx
+            .send(ResultMessage {
+                generation: old,
+                choices: Some((vec!["stale".into()], vec![None])),
+            })
+            .unwrap();
         app.poll_completion();
         assert!(app.arg_panel.filtered_choices()[0].1.contains("new"));
     }
     #[test]
     fn structured_provider_response_retains_empty_unicode_and_descriptions() {
-        let response: Response = serde_json::from_str(r#"{"version":1,"choices":[{"value":"","description":"empty"},{"value":"世界"}]}"#).unwrap();
+        let response: Response = serde_json::from_str(
+            r#"{"version":1,"choices":[{"value":"","description":"empty"},{"value":"世界"}]}"#,
+        )
+        .unwrap();
         assert_eq!(response.choices[0].value, "");
         assert_eq!(response.choices[1].value, "世界");
     }
