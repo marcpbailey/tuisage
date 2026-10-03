@@ -98,4 +98,17 @@ with tempfile.TemporaryDirectory() as directory:
     output, _ = session(['--spec-file', str(spec)], b'\x12', close_when_file_exists=marker)
     assert output == b''
     assert marker.read_text() == 'executed'
-print('PTY composition, normal execution, empty argv, cancellation, clean stdout, no execution and terminal restoration passed')
+
+    marker.unlink()
+    provider = root / 'reject'
+    provider.write_text('#!/bin/sh\ncat >/dev/null\necho rejected >&2\nexit 2\n')
+    provider.chmod(0o755)
+    for compose, expected_status in [(True, 130), (False, 0)]:
+        validation_args = ['--validate', str(provider), '--spec-file', str(spec)]
+        if compose:
+            validation_args.insert(0, '--compose')
+        output, screen = session(validation_args, b'\x12\x03', expected_status=expected_status)
+        assert output == b''
+        assert b'Validation failed' in screen
+        assert not marker.exists(), 'rejected validation ran the operational command'
+print('PTY composition, normal execution, empty argv, cancellation, validation rejection, clean stdout, no unintended execution and terminal restoration passed')

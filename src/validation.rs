@@ -158,6 +158,7 @@ fn check_choices(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn required_fields_and_choices_block_submission() {
         let spec: usage::Spec = "name \"demo\"\narg \"<blueprint>\"\nflag \"--format <format>\" { choices \"json\" \"text\"; }".parse().unwrap();
@@ -170,11 +171,69 @@ mod tests {
         app.current_flag_values_mut()[0].1 = FlagValue::String("json".into());
         assert!(app.validate_submission(None));
     }
+
+    #[test]
+    fn supported_count_limits_and_explicit_empty_are_checked() {
+        let mut errors = BTreeMap::new();
+        check_count(&mut errors, "root/args/item", 0, false, Some(2), Some(3));
+        assert!(errors["root/args/item"].contains("at least 2"));
+        errors.clear();
+        check_count(&mut errors, "root/args/item", 4, false, Some(2), Some(3));
+        assert!(errors["root/args/item"].contains("at most 3"));
+
+        let spec: usage::Spec = "name \"demo\"\narg \"[item]\"".parse().unwrap();
+        let mut app = App::new(spec);
+        app.arg_values[0].supplied = true;
+        assert!(app.validation_errors().is_empty());
+    }
+
+    #[cfg(unix)]
+    fn write_provider(directory: &tempfile::TempDir, body: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = directory.path().join("provider");
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn provider_accepts_rejects_malformed_and_failed_responses() {
+        let directory = tempfile::tempdir().unwrap();
+        let spec: usage::Spec = "name \"demo\"".parse().unwrap();
+
+        let accepted = write_provider(
+            &directory,
+            "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"version\":1,\"errors\":{}}'\n",
+        );
+        assert!(App::new(spec.clone()).validate_submission(Some(&accepted)));
+
+        let rejected = write_provider(
+            &directory,
+            "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"version\":1,\"errors\":{\"root/args/name\":\"Rejected\"}}'\n",
+        );
+        let mut app = App::new(spec.clone());
+        assert!(!app.validate_submission(Some(&rejected)));
+        assert!(app
+            .submission_error
+            .unwrap()
+            .contains("root/args/name: Rejected"));
+
+        let malformed = write_provider(
+            &directory,
+            "#!/bin/sh\ncat >/dev/null\nprintf '%s' broken\n",
+        );
+        assert!(!App::new(spec.clone()).validate_submission(Some(&malformed)));
+
+        let failed = write_provider(&directory, "#!/bin/sh\ncat >/dev/null\nexit 3\n");
+        assert!(!App::new(spec).validate_submission(Some(&failed)));
+    }
+
     #[test]
     fn provider_failure_cannot_validate() {
         let mut app = App::new("name \"demo\"".parse().unwrap());
         assert!(!app.validate_submission(Some(std::path::Path::new(
-            "/nonexistent-validation-provider"
+            "/nonexistent-validation-provider",
         ))));
         assert!(app
             .submission_error
