@@ -62,7 +62,8 @@ fn main() -> color_eyre::Result<()> {
         return Ok(());
     }
 
-    let theme_selection = theme::ThemeSelection::parse(args.theme.as_deref(), args.theme_light, args.theme_dark)?;
+    let theme_selection =
+        theme::ThemeSelection::parse(args.theme.as_deref(), args.theme_light, args.theme_dark)?;
 
     // Determine the usage spec source
     let has_spec_cmd = !args.spec_cmd.is_empty();
@@ -213,10 +214,7 @@ fn run_event_loop(
                         app.handle_key(key);
                     }
                     Event::Resize(width, height) => {
-                        app.resize_execution_to_terminal(ratatui::layout::Size {
-                            width,
-                            height,
-                        });
+                        app.resize_execution_to_terminal(ratatui::layout::Size { width, height });
                     }
                     _ => {}
                 }

@@ -223,6 +223,7 @@ pub struct App {
 }
 
 impl App {
+    #[cfg(test)]
     pub fn new(spec: Spec) -> Self {
         Self::with_theme(spec, ThemeName::default())
     }
