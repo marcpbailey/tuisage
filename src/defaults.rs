@@ -14,8 +14,8 @@ struct Input {
 
 #[derive(Clone)]
 pub enum FieldKind {
-    Flag(SpecFlag),
-    Arg(SpecArg),
+    Flag(Box<SpecFlag>),
+    Arg(Box<SpecArg>),
 }
 #[derive(Clone)]
 pub struct Field {
@@ -55,7 +55,7 @@ pub fn fields(spec: &Spec) -> Vec<Field> {
                 id: field_id(path, "flags", &flag.name, path.is_empty() && flag.global),
                 path: path.to_vec(),
                 name: flag.name.clone(),
-                kind: FieldKind::Flag(flag.clone()),
+                kind: FieldKind::Flag(Box::new(flag.clone())),
             });
         }
         for arg in &cmd.args {
@@ -63,7 +63,7 @@ pub fn fields(spec: &Spec) -> Vec<Field> {
                 id: field_id(path, "args", &arg.name, false),
                 path: path.to_vec(),
                 name: arg.name.clone(),
-                kind: FieldKind::Arg(arg.clone()),
+                kind: FieldKind::Arg(Box::new(arg.clone())),
             });
         }
         for (name, sub) in &cmd.subcommands {
