@@ -641,7 +641,10 @@ impl App {
                             }
                             FlagValue::EmptyString => {
                                 *value = FlagValue::String(String::new());
-                                self.sync_global_flag(&flag_name, &FlagValue::String(String::new()));
+                                self.sync_global_flag(
+                                    &flag_name,
+                                    &FlagValue::String(String::new()),
+                                );
                             }
                             FlagValue::NegBool(state) => {
                                 *state = None;
@@ -3796,6 +3799,24 @@ cmd "other" {
         assert!(parts.contains(&"hello world".to_string()));
         // Should NOT contain quotes
         assert!(!parts.iter().any(|p| p.contains('"')));
+    }
+
+    #[test]
+    fn explicit_empty_arg_appears_in_preview_and_command_parts() {
+        let spec = r#"
+name "fake"
+cmd "run" {
+    arg "[value]"
+}
+"#
+        .parse::<Spec>()
+        .expect("Failed to parse empty-argument test spec");
+        let mut app = App::new(spec);
+        app.navigate_to_command(&["run"]);
+        app.set_arg_value(0, String::new());
+
+        assert_eq!(app.build_command(), "fake run \"\"");
+        assert_eq!(app.build_command_parts(), vec!["fake", "run", ""]);
     }
 
     #[test]

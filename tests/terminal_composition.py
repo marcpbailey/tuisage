@@ -11,7 +11,7 @@ import time
 
 BINARY = Path(sys.argv[1] if len(sys.argv) > 1 else 'target/debug/tuisage').resolve()
 
-def session(args, keys, expected_status=0):
+def session(args, keys, expected_status=0, close_when_file_exists=None):
     read_out, write_out = os.pipe()
     pid, terminal = os.forkpty()
     if pid == 0:
@@ -25,6 +25,7 @@ def session(args, keys, expected_status=0):
     output = bytearray()
     started = time.monotonic()
     sent = False
+    last_close_sent = None
     status = None
     while time.monotonic() - started < 10:
         for fd in select.select([terminal, read_out], [], [], 0.05)[0]:
@@ -42,6 +43,13 @@ def session(args, keys, expected_status=0):
             time.sleep(0.1)
             os.write(terminal, keys)
             sent = True
+        if (
+            close_when_file_exists
+            and close_when_file_exists.exists()
+            and (last_close_sent is None or time.monotonic() - last_close_sent >= 0.2)
+        ):
+            os.write(terminal, b'q')
+            last_close_sent = time.monotonic()
         completed, status = os.waitpid(pid, os.WNOHANG)
         if completed:
             break
@@ -65,7 +73,7 @@ with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     marker = root / 'executed'
     child = root / 'fake'
-    child.write_text('#!/bin/sh\nprintf executed > "' + str(marker) + '"\n')
+    child.write_text('#!/bin/sh\nprintf executed\nprintf executed > "' + str(marker) + '"\n')
     child.chmod(0o755)
     spec = root / 'sample.usage.kdl'
     spec.write_text(
@@ -78,6 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert output.count(b'\n') == 1
     assert b'\x1b' not in output
     assert not marker.exists(), 'compose executed the child'
+    # Default Tab focus, Return to edit and commit an empty value, Ctrl+R to submit.
     output, _ = session(args, b'\t\r\r\x12')
     assert json.loads(output) == {'executable': str(child), 'argv': ['run', '']}, output
     assert output.count(b'\n') == 1
@@ -86,4 +95,7 @@ with tempfile.TemporaryDirectory() as directory:
     output, _ = session(args, b'\x03', expected_status=130)
     assert output == b''
     assert not marker.exists()
-print('PTY compose submission, exact empty argv, cancellation, clean stdout, no execution and terminal restoration passed')
+    output, _ = session(['--spec-file', str(spec)], b'\x12', close_when_file_exists=marker)
+    assert output == b''
+    assert marker.read_text() == 'executed'
+print('PTY composition, normal execution, empty argv, cancellation, clean stdout, no execution and terminal restoration passed')

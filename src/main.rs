@@ -136,7 +136,11 @@ fn main() -> color_eyre::Result<()> {
         spec.bin = cmd.clone();
     }
 
-    let base = if spec.bin.is_empty() { &spec.name } else { &spec.bin };
+    let base = if spec.bin.is_empty() {
+        &spec.name
+    } else {
+        &spec.bin
+    };
     let base_parts = shell_words::split(base)
         .map_err(|error| color_eyre::eyre::eyre!("Invalid base command quoting: {error}"))?;
     if base_parts.first().is_none_or(|part| part.is_empty()) {
@@ -213,9 +217,7 @@ fn run_spec_command(cmd: &str) -> color_eyre::Result<String> {
     })
 }
 
-fn current_terminal_size(
-    terminal: &mut AppTerminal,
-) -> color_eyre::Result<ratatui::layout::Size> {
+fn current_terminal_size(terminal: &mut AppTerminal) -> color_eyre::Result<ratatui::layout::Size> {
     let size = terminal.size()?;
     Ok(ratatui::layout::Size {
         width: size.width,
@@ -223,10 +225,7 @@ fn current_terminal_size(
     })
 }
 
-fn execute_current_command(
-    terminal: &mut AppTerminal,
-    app: &mut App,
-) -> color_eyre::Result<()> {
+fn execute_current_command(terminal: &mut AppTerminal, app: &mut App) -> color_eyre::Result<()> {
     let terminal_size = current_terminal_size(terminal)?;
     if let Err(e) = app.spawn_execution(terminal_size) {
         eprintln!("Failed to execute command: {}", e);
@@ -258,10 +257,7 @@ fn run_event_loop(
                         app.handle_key(key);
                     }
                     Event::Resize(width, height) => {
-                        app.resize_execution_to_terminal(ratatui::layout::Size {
-                            width,
-                            height,
-                        });
+                        app.resize_execution_to_terminal(ratatui::layout::Size { width, height });
                     }
                     _ => {}
                 }
@@ -288,7 +284,9 @@ fn run_event_loop(
                     app::Action::Execute => {
                         app.finish_editing();
                         if compose {
-                            return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?));
+                            return Ok(Some(ComposedCommand::from_parts(
+                                app.build_command_parts(),
+                            )?));
                         }
                         execute_current_command(terminal, app)?;
                     }
@@ -300,7 +298,9 @@ fn run_event_loop(
                 app::Action::Execute => {
                     app.finish_editing();
                     if compose {
-                        return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?));
+                        return Ok(Some(ComposedCommand::from_parts(
+                            app.build_command_parts(),
+                        )?));
                     }
                     execute_current_command(terminal, app)?;
                 }
@@ -312,7 +312,6 @@ fn run_event_loop(
         }
     }
 }
-
 
 #[cfg(test)]
 mod cli_tests {

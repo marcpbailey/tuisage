@@ -241,7 +241,9 @@ pub fn build_command(
     // Positional arg values (with live preview)
     for (i, arg) in arg_values.iter().enumerate() {
         let value = effective_arg_value(i, arg, preview);
-        if !value.is_empty() {
+        if value.is_empty() && arg.supplied {
+            parts.push("\"\"".to_string());
+        } else if !value.is_empty() {
             if value.contains(' ') {
                 parts.push(format!("\"{value}\""));
             } else {
