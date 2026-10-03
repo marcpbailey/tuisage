@@ -174,7 +174,6 @@ impl FlagPanelComponent {
         self.base.is_choosing()
     }
 
-    #[cfg(test)]
     pub fn choice_select_index(&self) -> Option<usize> {
         self.base.choice_select_index()
     }
