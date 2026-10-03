@@ -388,6 +388,9 @@ impl App {
     fn process_theme_picker_action(&mut self, action: ThemePickerAction) {
         match action {
             ThemePickerAction::PreviewTheme(name) => {
+                if !self.is_theme_picking() {
+                    self.automatic_theme = false;
+                }
                 self.theme_name = name;
             }
             ThemePickerAction::Confirmed => {
@@ -1422,7 +1425,10 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => Action::Quit,
-            KeyCode::Char('T') => {
+            KeyCode::Char('T') | KeyCode::Char('t')
+                if key.code == KeyCode::Char('T')
+                    || key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) =>
+            {
                 self.open_theme_picker();
                 Action::None
             }
@@ -4009,6 +4015,30 @@ cmd "other" {
 
         // Verify the execution component still exists
         assert!(app.execution.is_some());
+    }
+
+    #[test]
+    fn clicked_theme_disables_automatic_switching() {
+        let mut app = App::new(sample_spec());
+        app.automatic_theme = true;
+        app.open_theme_picker();
+        let action = app
+            .theme_picker
+            .click_at(85, 7, Some(ratatui::layout::Rect::new(80, 5, 18, 12)))
+            .unwrap();
+        app.process_theme_picker_action(action);
+        assert!(!app.automatic_theme);
+        assert!(!app.is_theme_picking());
+    }
+
+    #[test]
+    fn shifted_lowercase_t_opens_theme_picker() {
+        let mut app = App::new(sample_spec());
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('t'),
+            crossterm::event::KeyModifiers::SHIFT,
+        ));
+        assert!(app.is_theme_picking());
     }
 
     #[test]
