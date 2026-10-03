@@ -852,7 +852,10 @@ fn render_flag_indicator<'a>(value: Option<&FlagValue>, colors: &UiColors) -> Sp
                 Span::styled("[•] ", Style::default().fg(colors.arg))
             }
         }
-        Some(FlagValue::Strings(values)) => Span::styled(format!("[{}] ", values.len()), Style::default().fg(colors.arg)),
+        Some(FlagValue::Strings(values)) => Span::styled(
+            format!("[{}] ", values.len()),
+            Style::default().fg(colors.arg),
+        ),
         None => Span::styled("○ ", Style::default().fg(colors.help)),
     }
 }

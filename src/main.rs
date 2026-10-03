@@ -6,8 +6,8 @@ use clap::{CommandFactory, Parser};
 
 mod app;
 mod command_builder;
-mod defaults;
 mod components;
+mod defaults;
 mod theme;
 mod ui;
 

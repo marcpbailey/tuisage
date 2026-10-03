@@ -582,7 +582,9 @@ impl App {
             | ArgPanelAction::EditFinished { index, .. } => *index,
             ArgPanelAction::EnterRequest(_) => self.arg_index(),
         };
-        if self.arg_locked(index) { return Action::None; }
+        if self.arg_locked(index) {
+            return Action::None;
+        }
         match action {
             ArgPanelAction::EnterRequest(request) => {
                 self.process_arg_enter_request(request);
@@ -590,7 +592,9 @@ impl App {
             }
             ArgPanelAction::ClearArg(idx) => {
                 self.set_arg_value(idx, String::new());
-                if let Some(arg) = self.arg_values.get_mut(idx) { arg.supplied = false; }
+                if let Some(arg) = self.arg_values.get_mut(idx) {
+                    arg.supplied = false;
+                }
                 self.persist_current_arg_values();
                 Action::None
             }
@@ -613,11 +617,18 @@ impl App {
     /// Process a non-choice FlagPanelAction (toggle, clear, enter).
     fn process_flag_action(&mut self, action: FlagPanelAction) -> Action {
         let index = match &action {
-            FlagPanelAction::ToggleFlag(i) | FlagPanelAction::ClearFlag(i) | FlagPanelAction::NegBoolClick(i, _) => *i,
-            FlagPanelAction::ChoiceSelected { index, .. } | FlagPanelAction::ChoiceCancelled { index, .. } | FlagPanelAction::ValueChanged { index, .. } | FlagPanelAction::EditFinished { index, .. } => *index,
+            FlagPanelAction::ToggleFlag(i)
+            | FlagPanelAction::ClearFlag(i)
+            | FlagPanelAction::NegBoolClick(i, _) => *i,
+            FlagPanelAction::ChoiceSelected { index, .. }
+            | FlagPanelAction::ChoiceCancelled { index, .. }
+            | FlagPanelAction::ValueChanged { index, .. }
+            | FlagPanelAction::EditFinished { index, .. } => *index,
             _ => self.flag_index(),
         };
-        if self.flag_locked(index) { return Action::None; }
+        if self.flag_locked(index) {
+            return Action::None;
+        }
         match action {
             FlagPanelAction::ToggleFlag(_idx) => {
                 self.toggle_simple_flag();
@@ -648,7 +659,10 @@ impl App {
                             }
                             FlagValue::Strings(_) => {
                                 *value = FlagValue::String(String::new());
-                                self.sync_global_flag(&flag_name, &FlagValue::String(String::new()));
+                                self.sync_global_flag(
+                                    &flag_name,
+                                    &FlagValue::String(String::new()),
+                                );
                             }
                             FlagValue::NegBool(state) => {
                                 *state = None;
@@ -928,7 +942,9 @@ impl App {
     }
 
     fn set_arg_value(&mut self, index: usize, value: String) {
-        if self.arg_locked(index) { return; }
+        if self.arg_locked(index) {
+            return;
+        }
         if let Some(arg) = self.arg_values.get_mut(index) {
             arg.value = value;
             arg.supplied = true;
