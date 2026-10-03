@@ -898,7 +898,7 @@ impl App {
                     .unwrap_or_default();
                 let default = a.default.first().cloned().unwrap_or_default();
                 ArgValue {
-                    supplied: a.default.first().is_some(),
+                    supplied: !a.default.is_empty(),
                     name: a.name.clone(),
                     value: default,
                     required: a.required,
