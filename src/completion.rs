@@ -298,11 +298,16 @@ mod tests {
         assert!(app.start_completion(false, 0, "service", 5));
         assert!(!app.pending_completion.as_ref().unwrap().ready);
 
+        for character in "manual".chars() {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char(character),
+                crossterm::event::KeyModifiers::NONE,
+            ));
+        }
         app.handle_key(crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyCode::Enter,
             crossterm::event::KeyModifiers::NONE,
         ));
-        app.set_arg_value(0, "manual".into());
         assert_eq!(app.arg_values[0].value, "manual");
     }
 
