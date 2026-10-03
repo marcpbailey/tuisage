@@ -79,10 +79,9 @@ pub fn format_flag_value(
         FlagValue::Strings(values) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             let rendered = if values.len() == 1 && values[0].is_empty() {
                 "\"\"".to_string()
