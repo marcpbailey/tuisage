@@ -78,8 +78,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert output.count(b'\n') == 1
     assert b'\x1b' not in output
     assert not marker.exists(), 'compose executed the child'
-    output, _ = session(args, b'\t\x1bOQ\x12')
-    assert json.loads(output) == {'executable': str(child), 'argv': ['run', '']}
+    output, _ = session(args, b'\t\r\r\x12')
+    assert json.loads(output) == {'executable': str(child), 'argv': ['run', '']}, output
     assert output.count(b'\n') == 1
     assert b'\x1b' not in output
     assert not marker.exists(), 'compose executed the child'
