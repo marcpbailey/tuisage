@@ -592,6 +592,7 @@ mod tests {
             crossterm::event::KeyModifiers::NONE,
         );
         app.handle_key(enter);
+        app.wait_for_completion();
 
         // Only render if completion succeeded (skips if printf not available)
         if !app.is_choosing() {
