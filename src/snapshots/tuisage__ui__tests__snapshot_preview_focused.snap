@@ -1,5 +1,6 @@
 ---
 source: src/ui.rs
+assertion_line: 502
 expression: output
 ---
 ┌ Command ─────────────────────────────────────────────────────────────────────────────────────────┐
@@ -25,4 +26,4 @@ expression: output
 │                                      ││                                                          │
 │                                      ││                                                          │
 └──────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- ⏎ run  ⇥ next  q quit                                                                 T: [Dracula]
+ ⏎ run  ⇥ next  ^u reset  q quit                                                       T: [Dracula]

@@ -1,5 +1,6 @@
 ---
 source: src/ui.rs
+assertion_line: 714
 expression: output
 ---
 ┌ Command ─────────────────────────────────────────────────────────────────────────────────────────┐
@@ -25,4 +26,4 @@ expression: output
 │                                      ││                                                          │
 │                                      ││                                                          │
 └──────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- ↑↓ navigate  ⇥ next  / filter  ^r run  q quit                                            T: [Nord]
+ ↑↓ navigate  ⇥ next  / filter  ^u reset  ^r run  q quit                                  T: [Nord]
