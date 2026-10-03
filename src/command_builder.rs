@@ -6,7 +6,11 @@ use crate::app::{ArgValue, FlagValue};
 
 /// Resolve the flag spec for a given name, checking the provided flags first,
 /// then falling back to global flags on the root command.
-fn find_flag_spec<'a>(name: &str, flags: &'a [SpecFlag], global_flags: &'a [SpecFlag]) -> Option<&'a SpecFlag> {
+fn find_flag_spec<'a>(
+    name: &str,
+    flags: &'a [SpecFlag],
+    global_flags: &'a [SpecFlag],
+) -> Option<&'a SpecFlag> {
     flags
         .iter()
         .find(|f| f.name == name)
@@ -181,7 +185,9 @@ pub fn build_command_parts(
 /// Quote one argv token for copying into a POSIX shell.
 pub fn quote_posix(value: &str) -> String {
     if !value.is_empty()
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b"_@%+=:,./-".contains(&b))
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_@%+=:,./-".contains(&b))
     {
         value.to_string()
     } else {
@@ -195,20 +201,64 @@ mod tests {
 
     #[test]
     fn preview_tokens_round_trip_through_posix_shell() {
-        let tokens = ["", "two words", "single'quote", "double\"quote", "世界", "$HOME", "$(printf danger)", "`id`", "line\nbreak", "a;b", "safe-token"];
-        let script = format!("printf '%s\\0' {}", tokens.iter().map(|s| quote_posix(s)).collect::<Vec<_>>().join(" "));
-        let output = std::process::Command::new("sh").args(["-c", &script]).output().unwrap();
+        let tokens = [
+            "",
+            "two words",
+            "single'quote",
+            "double\"quote",
+            "世界",
+            "$HOME",
+            "$(printf danger)",
+            "`id`",
+            "line\nbreak",
+            "a;b",
+            "safe-token",
+        ];
+        let script = format!(
+            "printf '%s\\0' {}",
+            tokens
+                .iter()
+                .map(|s| quote_posix(s))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let output = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .output()
+            .unwrap();
         assert!(output.status.success());
-        let expected = tokens.iter().flat_map(|s| s.as_bytes().iter().copied().chain(std::iter::once(0))).collect::<Vec<_>>();
+        let expected = tokens
+            .iter()
+            .flat_map(|s| s.as_bytes().iter().copied().chain(std::iter::once(0)))
+            .collect::<Vec<_>>();
         assert_eq!(output.stdout, expected);
     }
 
     #[test]
     fn preview_is_quoted_execution_argv() {
         let spec: Spec = "name \"demo\"\narg \"[value]\"".parse().unwrap();
-        let args = vec![ArgValue { name: "value".into(), value: "$HOME's file".into(), required: false, choices: vec![], help: None }];
-        let preview = LiveArgPreview { choice_select_index: None, choice_select_text: "", is_editing: false, editing_index: 0, editing_text: "" };
+        let args = vec![ArgValue {
+            name: "value".into(),
+            value: "$HOME's file".into(),
+            required: false,
+            choices: vec![],
+            help: None,
+        }];
+        let preview = LiveArgPreview {
+            choice_select_index: None,
+            choice_select_text: "",
+            is_editing: false,
+            editing_index: 0,
+            editing_text: "",
+        };
         let flags = HashMap::new();
-        assert_eq!(build_command(&spec, &flags, &[], &args, &preview), build_command_parts(&spec, &flags, &[], &args).iter().map(|s| quote_posix(s)).collect::<Vec<_>>().join(" "));
+        assert_eq!(
+            build_command(&spec, &flags, &[], &args, &preview),
+            build_command_parts(&spec, &flags, &[], &args)
+                .iter()
+                .map(|s| quote_posix(s))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
     }
 }
