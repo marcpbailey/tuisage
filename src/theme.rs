@@ -234,4 +234,29 @@ mod selection_tests {
             ThemeName::default()
         );
     }
+
+    #[test]
+    fn automatic_selection_uses_one_of_its_configured_themes() {
+        let selection = ThemeSelection::parse(
+            Some("auto"),
+            Some(ThemeName::CatppuccinLatte),
+            Some(ThemeName::Dracula),
+        )
+        .unwrap();
+        let initial = selection.initial();
+
+        assert!(matches!(
+            initial,
+            ThemeName::CatppuccinLatte | ThemeName::Dracula
+        ));
+        let updates = selection
+            .watch()
+            .expect("automatic selection watches appearance");
+        assert!(matches!(
+            updates
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap(),
+            ThemeName::CatppuccinLatte | ThemeName::Dracula
+        ));
+    }
 }

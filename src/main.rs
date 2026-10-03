@@ -183,6 +183,17 @@ fn execute_current_command(
     Ok(())
 }
 
+fn apply_appearance_updates(
+    app: &mut App,
+    appearance: &std::sync::mpsc::Receiver<ratatui_themes::ThemeName>,
+) {
+    for name in appearance.try_iter() {
+        if app.automatic_theme && !app.is_theme_picking() {
+            app.theme_name = name;
+        }
+    }
+}
+
 fn run_event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
@@ -192,11 +203,7 @@ fn run_event_loop(
 
     loop {
         if let Some(appearance) = appearance {
-            for name in appearance.try_iter() {
-                if app.automatic_theme && !app.is_theme_picking() {
-                    app.theme_name = name;
-                }
-            }
+            apply_appearance_updates(app, appearance);
         }
         terminal.draw(|frame| ui::render(frame, app))?;
 
@@ -255,5 +262,28 @@ fn run_event_loop(
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    use ratatui_themes::ThemeName;
+
+    #[test]
+    fn automatic_appearance_updates_theme_until_manual_override() {
+        let spec = "name \"fake\"".parse().expect("valid test spec");
+        let mut app = App::new(spec);
+        app.automatic_theme = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        sender.send(ThemeName::CatppuccinLatte).unwrap();
+        apply_appearance_updates(&mut app, &receiver);
+        assert_eq!(app.theme_name, ThemeName::CatppuccinLatte);
+
+        app.automatic_theme = false;
+        sender.send(ThemeName::Nord).unwrap();
+        apply_appearance_updates(&mut app, &receiver);
+        assert_eq!(app.theme_name, ThemeName::CatppuccinLatte);
     }
 }
