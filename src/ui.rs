@@ -19,7 +19,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let palette = app.palette();
     let colors = UiColors::from_palette(&palette);
     let frame_area = frame.area();
-    frame.buffer_mut().set_style(frame_area, ratatui::style::Style::default().fg(palette.fg).bg(palette.bg));
+    frame.buffer_mut().set_style(
+        frame_area,
+        ratatui::style::Style::default()
+            .fg(palette.fg)
+            .bg(palette.bg),
+    );
 
     if app.mode == AppMode::Executing {
         if let Some(ref mut exec) = app.execution {

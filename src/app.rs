@@ -1428,7 +1428,9 @@ impl App {
             KeyCode::Char('q') => Action::Quit,
             KeyCode::Char('T') | KeyCode::Char('t')
                 if key.code == KeyCode::Char('T')
-                    || key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) =>
+                    || key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::SHIFT) =>
             {
                 self.open_theme_picker();
                 Action::None
