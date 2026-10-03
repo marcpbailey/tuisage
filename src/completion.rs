@@ -234,10 +234,12 @@ mod tests {
             })
             .unwrap();
         app.poll_completion();
-        assert_eq!(
-            app.pending_completion.as_ref().unwrap().context["fields"]["global/flags/backend"],
-            "new"
-        );
+        let context = &app.pending_completion.as_ref().unwrap().context;
+        assert_eq!(context["version"], 1);
+        assert_eq!(context["command"], serde_json::json!([]));
+        assert_eq!(context["field"], "root/args/service");
+        assert_eq!(context["fields"]["global/flags/backend"], "new");
+        assert_eq!(context["argv"], serde_json::json!(["--backend", "new"]));
         app.wait_for_completion();
         let choices = app.arg_panel.filtered_choices();
         assert_eq!(choices.len(), 1);
@@ -251,6 +253,59 @@ mod tests {
         app.poll_completion();
         assert!(app.arg_panel.filtered_choices()[0].1.contains("new"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_provider_keeps_manual_entry_available() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            arg "[service]"
+            complete "service" run="exit 1"
+        "#
+        .parse()
+        .unwrap();
+        let mut app = App::new(spec);
+        app.set_focus(Focus::Args);
+        assert!(app.start_completion(false, 0, "service", 5));
+        app.wait_for_completion();
+        assert!(app.is_choosing());
+
+        for character in "manual".chars() {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char(character),
+                crossterm::event::KeyModifiers::NONE,
+            ));
+        }
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(app.arg_values[0].value, "manual");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn slow_provider_does_not_block_form_interaction() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            arg "[service]"
+            complete "service" run="sleep 0.3; printf 'ready\n'"
+        "#
+        .parse()
+        .unwrap();
+        let mut app = App::new(spec);
+        app.set_focus(Focus::Args);
+        assert!(app.start_completion(false, 0, "service", 5));
+        assert!(!app.pending_completion.as_ref().unwrap().ready);
+
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        app.set_arg_value(0, "manual".into());
+        assert_eq!(app.arg_values[0].value, "manual");
+    }
+
     #[test]
     fn structured_provider_response_retains_empty_unicode_and_descriptions() {
         let response: Response = serde_json::from_str(
