@@ -129,7 +129,7 @@ pub fn flag_value(flag: &SpecFlag, value: &Value) -> color_eyre::Result<FlagValu
             }
         }
         Ok(if value.is_empty() {
-            FlagValue::Strings(vec![value.into()])
+            FlagValue::EmptyString
         } else {
             FlagValue::String(value.into())
         })
@@ -232,6 +232,21 @@ mod tests {
     fn spec() -> Spec {
         "name \"demo\"\nflag \"--backend <backend>\" global=#true\nflag \"--verbose\"\ncmd \"run\" { arg \"[value]\"; }".parse().unwrap()
     }
+    #[test]
+    fn empty_flag_default_uses_composition_scalar_representation() {
+        let mut app = App::new(spec());
+        let initial = parse(r#"{"backend":{"value":""}}"#, &app.spec).unwrap();
+        app.configure_defaults(initial);
+        assert!(app
+            .current_flag_values()
+            .iter()
+            .any(|(name, value)| name == "backend" && matches!(value, FlagValue::EmptyString)));
+        assert!(app
+            .build_command_parts()
+            .windows(2)
+            .any(|parts| parts == ["--backend", ""]));
+    }
+
     #[test]
     fn typed_defaults_and_locked_keyboard_reset() {
         let mut app = App::new(spec());

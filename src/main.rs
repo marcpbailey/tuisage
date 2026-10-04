@@ -142,9 +142,17 @@ fn main() -> color_eyre::Result<()> {
         spec.bin = cmd.clone();
     }
 
-    let initial = args.defaults.as_deref().map(|text| defaults::parse(text, &spec)).transpose()?;
+    let initial = args
+        .defaults
+        .as_deref()
+        .map(|text| defaults::parse(text, &spec))
+        .transpose()?;
 
-    let base = if spec.bin.is_empty() { &spec.name } else { &spec.bin };
+    let base = if spec.bin.is_empty() {
+        &spec.name
+    } else {
+        &spec.bin
+    };
     let base_parts = shell_words::split(base)
         .map_err(|error| color_eyre::eyre::eyre!("Invalid base command quoting: {error}"))?;
     if base_parts.first().is_none_or(|part| part.is_empty()) {
