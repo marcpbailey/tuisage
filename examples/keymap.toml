@@ -1,0 +1,13 @@
+# Copy to $XDG_CONFIG_HOME/tuisage/keymap.toml or ~/.config/tuisage/keymap.toml.
+# Modified and keypad Enter keys work only when the terminal reports them separately.
+[bindings]
+"ctrl+r" = "submit"
+"cmd+enter" = "submit"
+"keypad-enter" = "submit"
+"ctrl+c" = "cancel"
+"q" = "cancel"
+"tab" = "next-field"
+"backtab" = "previous-field"
+
+# Set a built-in key to "unbound" to disable that binding.
+# "ctrl+r" = "unbound"

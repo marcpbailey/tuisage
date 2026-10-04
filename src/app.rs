@@ -140,6 +140,7 @@ pub struct UiLayout {
     pub arg_overlay_rect: Option<Rect>,
     pub theme_overlay_rect: Option<Rect>,
     pub theme_indicator_rect: Option<Rect>,
+    pub bottom_actions: Vec<(Rect, crossterm::event::KeyEvent)>,
 }
 
 impl UiLayout {
@@ -150,6 +151,7 @@ impl UiLayout {
             arg_overlay_rect: None,
             theme_overlay_rect: None,
             theme_indicator_rect: None,
+            bottom_actions: Vec::new(),
         }
     }
 
@@ -174,6 +176,7 @@ impl UiLayout {
 /// Main application state.
 pub struct App {
     pub spec: Spec,
+    pub keymap: crate::keymap::Keymap,
 
     /// Current app mode (builder vs executing).
     pub mode: AppMode,
@@ -271,6 +274,7 @@ impl App {
 
         let mut app = Self {
             spec,
+            keymap: crate::keymap::Keymap::default(),
             mode: AppMode::Builder,
             execution: None,
             theme_name,
@@ -1227,6 +1231,17 @@ impl App {
         let col = event.column;
         let row = event.row;
 
+        if event.kind == MouseEventKind::Down(MouseButton::Left) {
+            if let Some((_, key)) = self
+                .layout
+                .bottom_actions
+                .iter()
+                .find(|(rect, _)| rect.contains(ratatui::layout::Position::new(col, row)))
+            {
+                return self.handle_key(*key);
+            }
+        }
+
         // Track mouse position for hover highlighting
         self.mouse_position = Some((col, row));
 
@@ -1252,8 +1267,10 @@ impl App {
                             && row >= rect.y
                             && row < rect.y + rect.height
                         {
-                            self.open_theme_picker();
-                            return Action::None;
+                            return self.handle_key(crossterm::event::KeyEvent::new(
+                                crossterm::event::KeyCode::Char('T'),
+                                crossterm::event::KeyModifiers::NONE,
+                            ));
                         }
                     }
 
@@ -1393,13 +1410,20 @@ impl App {
             return Action::None;
         }
 
-        // Ctrl+R executes command from any panel, regardless of edit/filter mode
-        if key.code == KeyCode::Char('r')
-            && key
-                .modifiers
-                .contains(crossterm::event::KeyModifiers::CONTROL)
-        {
+        let focused_panel_is_handling_input = self.focused_panel_is_handling_input();
+        let mapped_action = self.keymap.resolve(key);
+        if mapped_action == Some(crate::keymap::NamedAction::Submit) {
             return Action::Execute;
+        }
+        if mapped_action == Some(crate::keymap::NamedAction::Unbound) {
+            return Action::None;
+        }
+        let is_q = key.code == KeyCode::Char('q')
+            && key.modifiers == crossterm::event::KeyModifiers::NONE;
+        if mapped_action == Some(crate::keymap::NamedAction::Cancel)
+            && !(is_q && focused_panel_is_handling_input)
+        {
+            return Action::Quit;
         }
 
         // If the theme picker is open, handle its keys
@@ -1407,16 +1431,32 @@ impl App {
             return self.handle_theme_picker_key(key);
         }
 
-        let focused_panel_is_handling_input = self.focused_panel_is_handling_input();
         if let Some(action) = self.handle_focused_panel_key(key) {
             return action;
+        }
+        match mapped_action {
+            Some(crate::keymap::NamedAction::NextField) => {
+                self.finish_editing();
+                self.focus_next();
+                return Action::None;
+            }
+            Some(crate::keymap::NamedAction::PreviousField) => {
+                self.finish_editing();
+                self.focus_prev();
+                return Action::None;
+            }
+            _ => {}
         }
         if focused_panel_is_handling_input {
             return Action::None;
         }
 
+        match mapped_action {
+            Some(crate::keymap::NamedAction::Cancel) => return Action::Quit,
+            _ => {}
+        }
+
         match key.code {
-            KeyCode::Char('q') => Action::Quit,
             KeyCode::Char('T') => {
                 self.open_theme_picker();
                 Action::None
@@ -1436,10 +1476,6 @@ impl App {
                     .contains(crossterm::event::KeyModifiers::CONTROL) =>
             {
                 self.reset_current_command();
-                Action::None
-            }
-            KeyCode::Tab => {
-                self.focus_next();
                 Action::None
             }
             KeyCode::BackTab => {
@@ -3710,6 +3746,21 @@ cmd "other" {
         // Test from Preview panel
         app.set_focus(Focus::Preview);
         assert_eq!(app.handle_key(ctrl_r), Action::Execute);
+    }
+
+    #[test]
+    fn modified_enter_submits_and_cancel_binding_quits() {
+        let mut app = App::new(sample_spec());
+        let shift_enter = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+        let cancel = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('q'),
+            crossterm::event::KeyModifiers::NONE,
+        );
+        assert_eq!(app.handle_key(shift_enter), Action::Execute);
+        assert_eq!(app.handle_key(cancel), Action::Quit);
     }
 
     #[test]
