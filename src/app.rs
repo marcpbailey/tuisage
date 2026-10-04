@@ -817,7 +817,9 @@ impl App {
     /// Find a `complete` directive for the given argument name on the current command.
     pub fn find_completion(&self, arg_name: &str) -> Option<&usage::SpecComplete> {
         let cmd = self.current_command();
-        cmd.complete.get(arg_name).or_else(|| self.spec.complete.get(arg_name))
+        cmd.complete
+            .get(arg_name)
+            .or_else(|| self.spec.complete.get(arg_name))
     }
 
     /// Run a completion command and parse its output into (choices, descriptions).
@@ -838,10 +840,17 @@ impl App {
         }
 
         let results = Self::parse_completion_output(&output.stdout, descriptions);
-        if results.0.is_empty() { None } else { Some(results) }
+        if results.0.is_empty() {
+            None
+        } else {
+            Some(results)
+        }
     }
 
-    pub fn parse_completion_output(output: &[u8], descriptions: bool) -> (Vec<String>, Vec<Option<String>>) {
+    pub fn parse_completion_output(
+        output: &[u8],
+        descriptions: bool,
+    ) -> (Vec<String>, Vec<Option<String>>) {
         let stdout = String::from_utf8_lossy(output);
         let mut choices = Vec::new();
         let mut descs = Vec::new();
@@ -1631,7 +1640,9 @@ impl App {
                     })
                     .unwrap_or(current_value);
                 if let Some(ref arg_name) = arg_name {
-                    if self.start_completion(true, index, arg_name, value_column) { return; }
+                    if self.start_completion(true, index, arg_name, value_column) {
+                        return;
+                    }
                 }
 
                 self.flag_panel.start_editing(&current_value);

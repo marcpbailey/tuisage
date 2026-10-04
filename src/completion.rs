@@ -116,8 +116,14 @@ impl App {
         self.pending_completion = Some(pending);
         let value = self.completion_value(flag, index);
         if flag {
-            self.flag_panel
-                .open_completion_select(index, vec![], vec![], &value, column);
+            if self.flag_panel.choice_select_index() == Some(index) {
+                self.flag_panel.update_completion_choices(vec![], vec![]);
+            } else {
+                self.flag_panel
+                    .open_completion_select(index, vec![], vec![], &value, column);
+            }
+        } else if self.arg_panel.choice_select_index() == Some(index) {
+            self.arg_panel.update_completion_choices(vec![], vec![]);
         } else {
             self.arg_panel
                 .open_completion_select(index, vec![], vec![], &value, column);
@@ -185,24 +191,13 @@ impl App {
             {
                 continue;
             }
-            let value = self.completion_value(pending.flag, pending.index);
             let (choices, descriptions) = message.choices.unwrap_or_default();
             if pending.flag {
-                self.flag_panel.open_completion_select(
-                    pending.index,
-                    choices,
-                    descriptions,
-                    &value,
-                    pending.column,
-                );
+                self.flag_panel
+                    .update_completion_choices(choices, descriptions);
             } else {
-                self.arg_panel.open_completion_select(
-                    pending.index,
-                    choices,
-                    descriptions,
-                    &value,
-                    pending.column,
-                );
+                self.arg_panel
+                    .update_completion_choices(choices, descriptions);
             }
             if let Some(pending) = self.pending_completion.as_mut() {
                 pending.ready = true;
@@ -309,6 +304,43 @@ mod tests {
             crossterm::event::KeyModifiers::NONE,
         ));
         assert_eq!(app.arg_values[0].value, "manual");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn arriving_completion_preserves_manual_text_and_cursor() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            arg "[service]"
+            complete "service" run="sleep 0.3; printf 'ready\n'"
+        "#
+        .parse()
+        .unwrap();
+        let mut app = App::new(spec);
+        app.set_focus(Focus::Args);
+        assert!(app.start_completion(false, 0, "service", 5));
+        for code in [
+            crossterm::event::KeyCode::Char('世'),
+            crossterm::event::KeyCode::Char('界'),
+            crossterm::event::KeyCode::Left,
+        ] {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                code,
+                crossterm::event::KeyModifiers::NONE,
+            ));
+        }
+        app.wait_for_completion();
+        assert_eq!(app.arg_panel.choice_select_text(), "世界");
+        for code in [
+            crossterm::event::KeyCode::Char('!'),
+            crossterm::event::KeyCode::Enter,
+        ] {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                code,
+                crossterm::event::KeyModifiers::NONE,
+            ));
+        }
+        assert_eq!(app.arg_values[0].value, "世!界");
     }
 
     #[test]
