@@ -178,7 +178,10 @@ fn render_flag_list(
             break;
         }
     }
-    let mut display_flags: Vec<_> = collect_visible_flags(cmd, &app.spec).into_iter().cloned().collect();
+    let mut display_flags: Vec<_> = collect_visible_flags(cmd, &app.spec)
+        .into_iter()
+        .cloned()
+        .collect();
     for (index, flag) in display_flags.iter_mut().enumerate() {
         if app.flag_locked(index) {
             flag.help = Some(format!("[locked] {}", flag.help.as_deref().unwrap_or("")));
@@ -225,7 +228,9 @@ fn render_arg_list(
             arg.help = Some(format!("[locked] {}", arg.help.as_deref().unwrap_or("")));
         }
     }
-    let data = ArgRenderData { arg_values: &display_args };
+    let data = ArgRenderData {
+        arg_values: &display_args,
+    };
 
     app.arg_panel
         .render_with_data(area, frame.buffer_mut(), colors, data);

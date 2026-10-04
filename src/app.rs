@@ -564,11 +564,22 @@ impl App {
 
     /// Apply a string value to the flag at the given visible index.
     fn apply_flag_string_value(&mut self, flag_idx: usize, value: &str) {
-        if self.flag_locked(flag_idx) { return; }
-        let flag_name = self.current_flag_values().get(flag_idx).map(|(name, _)| name.clone());
+        if self.flag_locked(flag_idx) {
+            return;
+        }
+        let flag_name = self
+            .current_flag_values()
+            .get(flag_idx)
+            .map(|(name, _)| name.clone());
         if let Some(flag_name) = flag_name {
-            let new_value = if value.is_empty() { FlagValue::EmptyString } else { FlagValue::String(value.to_string()) };
-            if let Some((_, current)) = self.current_flag_values_mut().get_mut(flag_idx) { *current = new_value.clone(); }
+            let new_value = if value.is_empty() {
+                FlagValue::EmptyString
+            } else {
+                FlagValue::String(value.to_string())
+            };
+            if let Some((_, current)) = self.current_flag_values_mut().get_mut(flag_idx) {
+                *current = new_value.clone();
+            }
             self.sync_global_flag(&flag_name, &new_value);
             self.refresh_flag_panel_inputs();
         }
@@ -1115,7 +1126,11 @@ impl App {
         }
         self.persist_current_arg_values();
         self.apply_initial_fields(true);
-        self.arg_values = self.arg_values_by_path.get(&self.command_path_key()).cloned().unwrap_or_default();
+        self.arg_values = self
+            .arg_values_by_path
+            .get(&self.command_path_key())
+            .cloned()
+            .unwrap_or_default();
 
         self.refresh_flag_panel_inputs();
         self.refresh_arg_panel_inputs();
@@ -1506,7 +1521,9 @@ impl App {
                     .and_then(|(_, v)| match v {
                         FlagValue::String(s) => Some(s.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
+                        FlagValue::Strings(values) => {
+                            Some(values.last().cloned().unwrap_or_default())
+                        }
                         _ => None,
                     })
                     .unwrap_or_default()
@@ -1526,7 +1543,6 @@ impl App {
             _ => {}
         }
     }
-
 
     #[cfg(test)]
     fn move_up(&mut self) {
@@ -1584,7 +1600,9 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
+                        FlagValue::Strings(values) => {
+                            Some(values.last().cloned().unwrap_or_default())
+                        }
                         _ => None,
                     })
                     .unwrap_or(current_value);
@@ -1603,7 +1621,9 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => Some(values.last().cloned().unwrap_or_default()),
+                        FlagValue::Strings(values) => {
+                            Some(values.last().cloned().unwrap_or_default())
+                        }
                         _ => None,
                     })
                     .unwrap_or(current_value);
@@ -1697,7 +1717,9 @@ impl App {
     /// Toggle a Bool, NegBool, or Count flag at the current index.
     /// Bool: flip. NegBool: cycle None→Some(true)→Some(false)→None. Count: increment.
     fn toggle_simple_flag(&mut self) {
-        if self.flag_locked(self.flag_index()) { return; }
+        if self.flag_locked(self.flag_index()) {
+            return;
+        }
         let flag_idx = self.flag_index();
         let mut changed = false;
         {
@@ -5862,7 +5884,9 @@ cmd "run" {
             cmd "run" {
                 arg "[value]"
             }
-        "#.parse().unwrap();
+        "#
+        .parse()
+        .unwrap();
         let mut app = App::new(spec.clone());
         let initial = crate::defaults::parse(
             r#"{"backend":{"value":"orbitron","locked":true},"value":{"value":"fixed","locked":true}}"#,

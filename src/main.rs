@@ -9,6 +9,7 @@ mod app;
 mod command_builder;
 mod components;
 mod defaults;
+mod fields;
 mod theme;
 mod ui;
 

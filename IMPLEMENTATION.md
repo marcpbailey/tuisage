@@ -275,7 +275,7 @@ Snapshot tests cover: root view, subcommand views, flag toggling, argument editi
 
 ## Initial values and field locks
 
-`src/defaults.rs` parses typed JSON values, resolves unambiguous field identifiers, and applies values and locks to app state. `--defaults JSON` accepts inline JSON; `--defaults @PATH` reads a JSON file. Locked fields reject mutation through the app action paths. Reset restores locked initial values after clearing command state. Explicit empty strings are represented as supplied values so command construction preserves them.
+`src/fields.rs` defines shared field identifiers and schema lookup. `src/defaults.rs` parses typed JSON values and applies values and locks to app state. `--defaults JSON` accepts inline JSON; `--defaults @PATH` reads a JSON file. Locked fields reject mutation through the app action paths. Reset restores locked initial values after clearing command state. Explicit empty strings are represented as supplied values so command construction preserves them.
 
 ## Remaining Work
 
