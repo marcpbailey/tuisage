@@ -14,7 +14,6 @@ pub fn flag_json(value: &FlagValue) -> Value {
         FlagValue::String(value) if value.is_empty() => Value::Null,
         FlagValue::String(value) => json!(value),
         FlagValue::EmptyString => json!(""),
-        FlagValue::Strings(values) => json!(values),
     }
 }
 

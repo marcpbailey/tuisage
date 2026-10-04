@@ -26,7 +26,6 @@ impl App {
                     Some(FlagValue::Count(count)) => *count as usize,
                     Some(FlagValue::String(value)) if !value.is_empty() => 1,
                     Some(FlagValue::EmptyString) => 1,
-                    Some(FlagValue::Strings(values)) => values.len(),
                     _ => 0,
                 };
                 let id = field_id(path, "flags", &flag.name, depth == 0 && flag.global);
@@ -42,9 +41,6 @@ impl App {
                     let strings = match value {
                         Some(FlagValue::String(s)) if !s.is_empty() => vec![s.as_str()],
                         Some(FlagValue::EmptyString) => vec![""],
-                        Some(FlagValue::Strings(values)) => {
-                            values.iter().map(String::as_str).collect()
-                        }
                         _ => vec![],
                     };
                     check_choices(&mut errors, &id, &strings, arg.choices.as_ref());
