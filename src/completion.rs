@@ -150,9 +150,6 @@ impl App {
                 .get(index)
                 .map(|(_, value)| match value {
                     crate::app::FlagValue::String(value) => value.clone(),
-                    crate::app::FlagValue::Strings(values) => {
-                        values.last().cloned().unwrap_or_default()
-                    }
                     crate::app::FlagValue::EmptyString => String::new(),
                     _ => String::new(),
                 })
