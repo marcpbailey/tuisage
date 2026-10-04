@@ -189,6 +189,12 @@ This README presents the main documentation intended for users. Other documents 
 
 The `--compose` option returns one JSON object with the executable and ordered argv. It does not run the command or open the execution view. The TUI uses the controlling terminal, so redirected stdout contains only JSON. Cancellation returns no output with status 130. Explicit empty arguments are retained. Terminal modes are restored on completion or error. Run `python3 tests/terminal_composition.py` after building to check the PTY flow.
 
+## Repeated options and arguments
+
+Usage specs can declare repeatable positional arguments, repeated flag occurrences, and multiple values on one flag occurrence. In the TUI, `Ctrl+N` and `Ctrl+D` add or remove positional rows or values within a flag occurrence. For a flag with repeated occurrences, `Ctrl+Alt+N` and `Ctrl+Alt+D` add or remove an occurrence; `Alt+Left/Right` selects an occurrence and `Ctrl+Left/Right` selects one of its values. Blank rows are omitted until edited, while an explicitly entered empty string is passed as an empty argument. Submission checks the occurrence count and the value count separately.
+
+Typed defaults use arrays for repeated fields. A repeated positional argument or repeated flag with one value per occurrence takes an array of strings. A flag with multiple values per occurrence takes an array of strings; when both the flag and its argument repeat, use an array of arrays so the occurrence groups remain distinct. For example: `{"group":{"value":[["one","two"],["three"]]}}`.
+
 ## License
 
 MIT

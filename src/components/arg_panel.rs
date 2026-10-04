@@ -104,8 +104,7 @@ impl ArgPanelComponent {
         self.base.set_total(total);
     }
 
-    #[cfg(test)]
-    pub fn select(&mut self, index: usize) {
+    pub(crate) fn select(&mut self, index: usize) {
         self.base.select(index);
     }
 

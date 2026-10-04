@@ -1,4 +1,4 @@
-use crate::app::{App, FlagValue};
+use crate::app::{App, ArgValue, FlagValue, RepeatInput};
 use crate::fields::{field_id, fields, Field, FieldKind};
 use serde::Deserialize;
 use serde_json::Value;
@@ -53,19 +53,20 @@ pub fn parse(source: &str, spec: &Spec) -> color_eyre::Result<Vec<InitialField>>
             FieldKind::Flag(flag) => {
                 flag_value(flag, &input.value)?;
             }
-            FieldKind::Arg(arg) if input.value.is_string() => {
-                if let Some(choices) = &arg.choices {
-                    if !choices
-                        .choices
-                        .iter()
-                        .any(|s| Some(s.as_str()) == input.value.as_str())
-                    {
-                        return Err(color_eyre::eyre::eyre!(
-                            "Default '{}' is not a declared choice",
-                            field.id
-                        ));
-                    }
+            FieldKind::Arg(arg) if arg.var && input.value.as_array().is_some() => {
+                for value in input.value.as_array().unwrap() {
+                    let value = value.as_str().ok_or_else(|| {
+                        color_eyre::eyre::eyre!("Default '{}' requires strings", field.id)
+                    })?;
+                    validate_default_choice(&field.id, arg.choices.as_ref(), value)?;
                 }
+            }
+            FieldKind::Arg(arg) if !arg.var && input.value.is_string() => {
+                validate_default_choice(
+                    &field.id,
+                    arg.choices.as_ref(),
+                    input.value.as_str().unwrap(),
+                )?;
             }
             _ => {
                 return Err(color_eyre::eyre::eyre!(
@@ -118,6 +119,38 @@ pub fn flag_value(flag: &SpecFlag, value: &Value) -> color_eyre::Result<FlagValu
             .and_then(|n| u32::try_from(n).ok())
             .ok_or_else(invalid)?;
         Ok(FlagValue::Count(count))
+    } else if flag.arg.is_some() && (flag.var || flag.arg.as_ref().is_some_and(|arg| arg.var)) {
+        let arg = flag.arg.as_ref().ok_or_else(invalid)?;
+        let groups: Vec<Vec<RepeatInput>> = if flag.var && arg.var {
+            value
+                .as_array()
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|group| {
+                    group
+                        .as_array()
+                        .ok_or_else(invalid)?
+                        .iter()
+                        .map(|value| repeated_string(flag, value))
+                        .collect()
+                })
+                .collect::<color_eyre::Result<_>>()?
+        } else {
+            let values: Vec<_> = value
+                .as_array()
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|value| repeated_string(flag, value))
+                .collect::<color_eyre::Result<_>>()?;
+            if flag.var {
+                values.into_iter().map(|value| vec![value]).collect()
+            } else if values.is_empty() {
+                Vec::new()
+            } else {
+                vec![values]
+            }
+        };
+        Ok(FlagValue::Repeated(groups))
     } else if flag.arg.is_some() {
         let value = value.as_str().ok_or_else(invalid)?;
         if let Some(choices) = flag.arg.as_ref().and_then(|arg| arg.choices.as_ref()) {
@@ -142,6 +175,35 @@ pub fn flag_value(flag: &SpecFlag, value: &Value) -> color_eyre::Result<FlagValu
     }
 }
 
+fn repeated_string(flag: &SpecFlag, value: &Value) -> color_eyre::Result<RepeatInput> {
+    let value = value
+        .as_str()
+        .ok_or_else(|| color_eyre::eyre::eyre!("Invalid value type for default '{}'", flag.name))?;
+    if let Some(choices) = flag.arg.as_ref().and_then(|arg| arg.choices.as_ref()) {
+        if !choices.choices.iter().any(|choice| choice == value) {
+            return Err(color_eyre::eyre::eyre!(
+                "Default '{}' is not a declared choice",
+                flag.name
+            ));
+        }
+    }
+    Ok(RepeatInput::supplied(value))
+}
+
+fn validate_default_choice(
+    id: &str,
+    choices: Option<&usage::SpecChoices>,
+    value: &str,
+) -> color_eyre::Result<()> {
+    if choices.is_some_and(|choices| !choices.choices.iter().any(|choice| choice == value)) {
+        return Err(color_eyre::eyre::eyre!(
+            "Default '{}' is not a declared choice",
+            id
+        ));
+    }
+    Ok(())
+}
+
 impl App {
     pub fn configure_defaults(&mut self, initial: Vec<InitialField>) {
         self.initial_fields = initial;
@@ -162,12 +224,53 @@ impl App {
             }
             let key = initial.field.path.join(" ");
             match initial.field.kind {
-                FieldKind::Arg(_) => {
+                FieldKind::Arg(ref spec_arg) => {
                     let args = self
                         .arg_values_by_path
                         .entry(key)
                         .or_insert_with(|| Self::default_arg_values_for_command(cmd));
-                    if let Some(arg) = args.iter_mut().find(|a| a.name == initial.field.name) {
+                    if spec_arg.var {
+                        let first = args
+                            .iter()
+                            .position(|arg| arg.name == initial.field.name)
+                            .unwrap_or(args.len());
+                        args.retain(|arg| arg.name != initial.field.name);
+                        let values = initial
+                            .value
+                            .as_array()
+                            .expect("validated repeated default");
+                        let mut rows: Vec<_> = values
+                            .iter()
+                            .map(|value| ArgValue {
+                                supplied: true,
+                                name: spec_arg.name.clone(),
+                                value: value.as_str().unwrap().to_owned(),
+                                required: spec_arg.required,
+                                choices: spec_arg
+                                    .choices
+                                    .as_ref()
+                                    .map(|choices| choices.choices.clone())
+                                    .unwrap_or_default(),
+                                help: spec_arg.help.clone(),
+                            })
+                            .collect();
+                        if rows.is_empty() {
+                            rows.push(ArgValue {
+                                supplied: false,
+                                name: spec_arg.name.clone(),
+                                value: String::new(),
+                                required: spec_arg.required,
+                                choices: spec_arg
+                                    .choices
+                                    .as_ref()
+                                    .map(|choices| choices.choices.clone())
+                                    .unwrap_or_default(),
+                                help: spec_arg.help.clone(),
+                            });
+                        }
+                        args.splice(first..first, rows);
+                    } else if let Some(arg) = args.iter_mut().find(|a| a.name == initial.field.name)
+                    {
                         arg.value = initial.value.as_str().unwrap().into();
                         arg.supplied = true;
                     }
@@ -405,5 +508,77 @@ mod tests {
         assert!(parse(r#"{"verbose":{"value":-1}}"#, &spec).is_err());
         assert!(parse(r#"{"quiet":{"value":"yes"}}"#, &spec).is_err());
         assert!(parse(r#"{"mode":{"value":"unsafe"}}"#, &spec).is_err());
+    }
+
+    #[test]
+    fn repeated_defaults_preserve_occurrence_groups_and_positional_rows() {
+        let spec: Spec = r#"
+            name "demo"
+            flag "--group... <item>..." var=#true {
+                arg "<item>..." var=#true
+            }
+            arg "<file>..." var=#true
+        "#
+        .parse()
+        .unwrap();
+        let initial = parse(
+            r#"{"group":{"value":[["a","b"],["c"]]},"file":{"value":["x","","z"]}}"#,
+            &spec,
+        )
+        .unwrap();
+        let mut app = App::new(spec.clone());
+        app.configure_defaults(initial);
+        assert_eq!(
+            app.build_command_parts(),
+            ["demo", "--group", "a", "b", "--group", "c", "x", "", "z"]
+        );
+
+        let group = spec
+            .cmd
+            .flags
+            .iter()
+            .find(|flag| flag.name == "group")
+            .unwrap();
+        assert!(flag_value(group, &serde_json::json!(["a", "b"])).is_err());
+        assert!(parse(r#"{"group":{"value":[["a"],"b"]}}"#, &spec).is_err());
+    }
+
+    #[test]
+    fn locked_repeated_values_reject_edits_and_return_on_reset() {
+        let spec: Spec = r#"
+            name "demo"
+            flag "--group... <item>..." var=#true {
+                arg "<item>..." var=#true
+            }
+            arg "<file>..." var=#true
+        "#
+        .parse()
+        .unwrap();
+        let initial = parse(
+            r#"{"group":{"value":[["a","b"]],"locked":true},"file":{"value":["x","y"],"locked":true}}"#,
+            &spec,
+        )
+        .unwrap();
+        let mut app = App::new(spec);
+        app.configure_defaults(initial);
+
+        app.set_focus(Focus::Args);
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
+        app.set_focus(Focus::Flags);
+        app.handle_key(KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ));
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
+
+        assert_eq!(
+            app.build_command_parts(),
+            ["demo", "--group", "a", "b", "x", "y"]
+        );
+        app.reset_current_command();
+        assert_eq!(
+            app.build_command_parts(),
+            ["demo", "--group", "a", "b", "x", "y"]
+        );
     }
 }

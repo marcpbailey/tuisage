@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-pub fn flag_json(value: &FlagValue) -> Value {
+pub fn flag_json(flag: &usage::SpecFlag, value: &FlagValue) -> Value {
     match value {
         FlagValue::Bool(value) => json!(value),
         FlagValue::NegBool(value) => json!(value),
@@ -14,6 +14,31 @@ pub fn flag_json(value: &FlagValue) -> Value {
         FlagValue::String(value) if value.is_empty() => Value::Null,
         FlagValue::String(value) => json!(value),
         FlagValue::EmptyString => json!(""),
+        FlagValue::Repeated(groups) => {
+            let values: Vec<Vec<Value>> = groups
+                .iter()
+                .map(|group| {
+                    group
+                        .iter()
+                        .filter(|input| input.supplied || !input.value.is_empty())
+                        .map(|input| json!(input.value))
+                        .collect()
+                })
+                .filter(|group: &Vec<Value>| !group.is_empty())
+                .collect();
+            let flag_repeats = flag.var;
+            let arg_repeats = flag.arg.as_ref().is_some_and(|arg| arg.var);
+            if flag_repeats && arg_repeats {
+                json!(values)
+            } else if flag_repeats {
+                json!(values
+                    .into_iter()
+                    .filter_map(|group| group.into_iter().next())
+                    .collect::<Vec<_>>())
+            } else {
+                json!(values.into_iter().next().unwrap_or_default())
+            }
+        }
     }
 }
 
@@ -28,7 +53,7 @@ pub fn context(app: &App, field: Option<&str>) -> Value {
                 if let Some((_, value)) = values.iter().find(|(name, _)| name == &flag.name) {
                     fields.insert(
                         field_id(path, "flags", &flag.name, depth == 0 && flag.global),
-                        flag_json(value),
+                        flag_json(flag, value),
                     );
                 }
             }
@@ -136,6 +161,28 @@ fn run_with_timeout(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn repeated_provider_values_keep_each_flag_occurrence() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            flag "--group... <item>..." var=#true {
+                arg "<item>..." var=#true
+            }
+        "#
+        .parse()
+        .unwrap();
+        let flag = &spec.cmd.flags[0];
+        let value = FlagValue::Repeated(vec![
+            vec![
+                crate::app::RepeatInput::supplied("a"),
+                crate::app::RepeatInput::omitted(),
+                crate::app::RepeatInput::supplied(""),
+            ],
+            vec![crate::app::RepeatInput::supplied("b")],
+        ]);
+        assert_eq!(flag_json(flag, &value), json!([["a", ""], ["b"]]));
+    }
 
     #[test]
     fn exited_provider_with_open_descendant_pipes_times_out() {

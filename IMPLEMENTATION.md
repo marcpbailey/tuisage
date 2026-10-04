@@ -294,6 +294,8 @@ Every execute/compose submission checks required arguments/options, required sub
 
 `--validate PATH` additionally invokes a provider executable directly, sending the version-1 JSON form context on stdin. The request includes executable, argv, command path, optional field, and a map of canonical field identifiers to values. It must return `{ "version": 1, "errors": {} }` for success, or errors keyed by field identifier. Nonzero exit, malformed response, unsupported version, or a five-second timeout blocks submission. The operational command is never invoked for validation. Usage 2.16.1 does not expose a general conditional-rule API; dependent command-specific constraints belong in this provider.
 
+Repeated flag state stores ordered occurrence groups, each with ordered values and a supplied marker. The command builder emits one flag prefix per nonempty occurrence. Defaults and provider context encode one repeat dimension as a string array and two flag dimensions as nested arrays; positional repeated defaults use a string array. Validation counts occurrences and each occurrence's values separately. Repeat selection and edits invalidate pending completion responses.
+
 ### Context-aware completion
 
 Legacy `complete ... run="..."` providers retain line-based output. They additionally receive `TUISAGE_CONTEXT_VERSION=1` and `TUISAGE_CONTEXT`, a JSON context containing canonical field values, command path, current argv and requested field. Top-level completion declarations are a fallback when the command has no matching declaration.

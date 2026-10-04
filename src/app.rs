@@ -73,8 +73,33 @@ pub enum FlagValue {
     String(String),
     /// An explicitly supplied empty string value.
     EmptyString,
+    /// Ordered flag occurrences, each containing its ordered argument values.
+    Repeated(Vec<Vec<RepeatInput>>),
     /// Count flag (e.g., -vvv).
     Count(u32),
+}
+
+/// One value in a repeated field. Unsupplied blank rows are editor placeholders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepeatInput {
+    pub supplied: bool,
+    pub value: String,
+}
+
+impl RepeatInput {
+    pub fn omitted() -> Self {
+        Self {
+            supplied: false,
+            value: String::new(),
+        }
+    }
+
+    pub fn supplied(value: impl Into<String>) -> Self {
+        Self {
+            supplied: true,
+            value: value.into(),
+        }
+    }
 }
 
 /// State for one positional argument's user-entered value.
@@ -127,6 +152,23 @@ pub(crate) fn collect_visible_flags<'a>(cmd: &'a SpecCommand, spec: &'a Spec) ->
 pub(crate) fn default_flag_value(flag: &SpecFlag) -> FlagValue {
     if flag.count {
         FlagValue::Count(0)
+    } else if flag.arg.is_some() && (flag.var || flag.arg.as_ref().is_some_and(|arg| arg.var)) {
+        let values = if !flag.default.is_empty() {
+            flag.default.clone()
+        } else {
+            flag.arg
+                .as_ref()
+                .map(|arg| arg.default.clone())
+                .unwrap_or_default()
+        };
+        let inputs: Vec<_> = values.into_iter().map(RepeatInput::supplied).collect();
+        if flag.var {
+            FlagValue::Repeated(inputs.into_iter().map(|value| vec![value]).collect())
+        } else if inputs.is_empty() {
+            FlagValue::Repeated(Vec::new())
+        } else {
+            FlagValue::Repeated(vec![inputs])
+        }
     } else if flag.arg.is_some() {
         let default = flag.default.first().cloned().unwrap_or_default();
         FlagValue::String(default)
@@ -207,6 +249,9 @@ pub struct App {
     /// Flag values keyed by flag name, per command path depth.
     /// The key is the full command path joined by space.
     pub flag_values: std::collections::HashMap<String, Vec<(String, FlagValue)>>,
+
+    /// Selected occurrence and value indexes for repeated flags, keyed by field id.
+    pub flag_repeat_positions: std::collections::HashMap<String, (usize, usize)>,
 
     /// Arg values keyed by command path.
     /// `arg_values` mirrors the currently selected path for rendering and editing.
@@ -295,6 +340,7 @@ impl App {
             command_panel,
             flag_panel: FilterableComponent::new(FlagPanelComponent::new()),
             flag_values: std::collections::HashMap::new(),
+            flag_repeat_positions: std::collections::HashMap::new(),
             arg_values_by_path: std::collections::HashMap::new(),
             arg_values: Vec::new(),
             focus_manager: FocusManager::new(),
@@ -363,6 +409,8 @@ impl App {
             return;
         }
 
+        self.completion_generation += 1;
+        self.pending_completion = None;
         self.notify_focus_lost(previous);
         self.focus_manager.set(panel);
         self.notify_focus_gained(panel);
@@ -542,7 +590,7 @@ impl App {
         }
     }
 
-    fn focused_panel_is_handling_input(&self) -> bool {
+    pub(crate) fn focused_panel_is_handling_input(&self) -> bool {
         match self.focus() {
             Focus::Commands => self.command_panel.is_filtering(),
             Focus::Flags => self.flag_panel.is_filtering() || self.flag_panel.is_editing() || self.flag_panel.is_choosing(),
@@ -576,6 +624,36 @@ impl App {
     fn apply_flag_string_value(&mut self, flag_idx: usize, value: &str) {
         if self.flag_locked(flag_idx) {
             return;
+        }
+        if let Some(flag) = self.visible_flags().get(flag_idx).copied() {
+            if flag.var || flag.arg.as_ref().is_some_and(|arg| arg.var) {
+                let position = self.flag_repeat_position(flag_idx);
+                let Some((flag_name, current)) = self.current_flag_values().get(flag_idx).cloned()
+                else {
+                    return;
+                };
+                let mut groups = match current {
+                    FlagValue::Repeated(groups) => groups,
+                    _ => Vec::new(),
+                };
+                while groups.len() <= position.0 {
+                    groups.push(Vec::new());
+                }
+                let values = &mut groups[position.0];
+                while values.len() <= position.1 {
+                    values.push(RepeatInput::omitted());
+                }
+                values[position.1] = RepeatInput::supplied(value);
+                let updated = FlagValue::Repeated(groups);
+                if let Some((_, current)) = self.current_flag_values_mut().get_mut(flag_idx) {
+                    *current = updated.clone();
+                }
+                self.sync_global_flag(&flag_name, &updated);
+                self.completion_generation += 1;
+                self.pending_completion = None;
+                self.refresh_flag_panel_inputs();
+                return;
+            }
         }
         let flag_name = self
             .current_flag_values()
@@ -686,6 +764,14 @@ impl App {
                                     &flag_name,
                                     &FlagValue::String(String::new()),
                                 );
+                            }
+                            FlagValue::Repeated(groups) => {
+                                groups.clear();
+                                let new_val = FlagValue::Repeated(Vec::new());
+                                self.sync_global_flag(&flag_name, &new_val);
+                                if let Some(id) = self.repeated_flag_id(idx) {
+                                    self.flag_repeat_positions.insert(id, (0, 0));
+                                }
                             }
                             FlagValue::NegBool(state) => {
                                 *state = None;
@@ -942,26 +1028,30 @@ impl App {
         cmd.args
             .iter()
             .filter(|a| !a.hide)
-            .map(|a| {
+            .flat_map(|a| {
                 let choices = a
                     .choices
                     .as_ref()
                     .map(|c| c.choices.clone())
                     .unwrap_or_default();
-                let default = a.default.first().cloned().unwrap_or_default();
-                ArgValue {
+                let defaults = if a.var && !a.default.is_empty() {
+                    a.default.clone()
+                } else {
+                    vec![a.default.first().cloned().unwrap_or_default()]
+                };
+                defaults.into_iter().map(move |default| ArgValue {
                     supplied: !default.is_empty(),
                     name: a.name.clone(),
                     value: default,
                     required: a.required,
-                    choices,
+                    choices: choices.clone(),
                     help: a.help.clone(),
-                }
+                })
             })
             .collect()
     }
 
-    fn persist_current_arg_values(&mut self) {
+    pub(crate) fn persist_current_arg_values(&mut self) {
         let path_key = self.command_path_key();
         self.arg_values_by_path
             .insert(path_key, self.arg_values.clone());
@@ -983,20 +1073,42 @@ impl App {
             arg.value = value;
             arg.supplied = true;
             self.persist_current_arg_values();
+            self.completion_generation += 1;
+            self.pending_completion = None;
         }
         self.refresh_arg_panel_inputs();
     }
 
-    fn refresh_flag_panel_inputs(&mut self) {
+    pub(crate) fn refresh_flag_panel_inputs(&mut self) {
         let flags = self.visible_flags_snapshot();
         let flag_refs: Vec<&SpecFlag> = flags.iter().collect();
-        let flag_values = self.current_flag_values().to_vec();
+        let flag_values: Vec<_> = self
+            .current_flag_values()
+            .iter()
+            .enumerate()
+            .map(|(index, (name, value))| {
+                let value = match value {
+                    FlagValue::Repeated(_) => self
+                        .current_repeated_flag_input(index)
+                        .map(|input| {
+                            if input.supplied && input.value.is_empty() {
+                                FlagValue::EmptyString
+                            } else {
+                                FlagValue::String(input.value)
+                            }
+                        })
+                        .unwrap_or_else(|| FlagValue::String(String::new())),
+                    value => value.clone(),
+                };
+                (name.clone(), value)
+            })
+            .collect();
         self.flag_panel.set_filterable_items_from_flags(&flag_refs);
         self.flag_panel
             .set_enter_requests_from_flags(&flag_refs, &flag_values);
     }
 
-    fn refresh_arg_panel_inputs(&mut self) {
+    pub(crate) fn refresh_arg_panel_inputs(&mut self) {
         self.arg_panel.set_filterable_items_from_args(&self.arg_values);
         self.arg_panel.set_enter_requests_from_args(&self.arg_values);
     }
@@ -1141,10 +1253,7 @@ impl App {
             self.sync_global_flag(&name, &default);
         }
 
-        for arg in &mut self.arg_values {
-            arg.value.clear();
-            arg.supplied = false;
-        }
+        self.arg_values = Self::default_arg_values_for_command(self.current_command());
         self.persist_current_arg_values();
         self.apply_initial_fields(true);
         self.arg_values = self
@@ -1152,6 +1261,13 @@ impl App {
             .get(&self.command_path_key())
             .cloned()
             .unwrap_or_default();
+
+        for flag_index in 0..self.visible_flags().len() {
+            if let Some(id) = self.repeated_flag_id(flag_index) {
+                self.flag_repeat_positions.insert(id, (0, 0));
+            }
+        }
+        self.arg_panel.set_total(self.arg_values.len());
 
         self.refresh_flag_panel_inputs();
         self.refresh_arg_panel_inputs();
@@ -1359,16 +1475,28 @@ impl App {
                             })
                         }
                         Focus::Flags => {
+                            let selected = self.flag_index();
                             let result = self.flag_panel.handle_mouse(event, area);
-                            self.dispatch_filter_result(result, |s, action| {
+                            let action = self.dispatch_filter_result(result, |s, action| {
                                 s.process_flag_action(action)
-                            })
+                            });
+                            if selected != self.flag_index() {
+                                self.completion_generation += 1;
+                                self.pending_completion = None;
+                            }
+                            action
                         }
                         Focus::Args => {
+                            let selected = self.arg_index();
                             let result = self.arg_panel.handle_mouse(event, area);
-                            self.dispatch_filter_result(result, |s, action| {
+                            let action = self.dispatch_filter_result(result, |s, action| {
                                 s.process_arg_action(action)
-                            })
+                            });
+                            if selected != self.arg_index() {
+                                self.completion_generation += 1;
+                                self.pending_completion = None;
+                            }
+                            action
                         }
                         Focus::Preview => {
                             if is_left && !switching_focus {
@@ -1394,16 +1522,28 @@ impl App {
                         })
                     }
                     Focus::Flags => {
+                        let selected = self.flag_index();
                         let result = self.flag_panel.handle_mouse(event, area);
-                        self.dispatch_filter_result(result, |s, action| {
+                        let action = self.dispatch_filter_result(result, |s, action| {
                             s.process_flag_action(action)
-                        })
+                        });
+                        if selected != self.flag_index() {
+                            self.completion_generation += 1;
+                            self.pending_completion = None;
+                        }
+                        action
                     }
                     Focus::Args => {
+                        let selected = self.arg_index();
                         let result = self.arg_panel.handle_mouse(event, area);
-                        self.dispatch_filter_result(result, |s, action| {
+                        let action = self.dispatch_filter_result(result, |s, action| {
                             s.process_arg_action(action)
-                        })
+                        });
+                        if selected != self.arg_index() {
+                            self.completion_generation += 1;
+                            self.pending_completion = None;
+                        }
+                        action
                     }
                     Focus::Preview => Action::None,
                 }
@@ -1488,10 +1628,24 @@ impl App {
         }
 
         let focused_panel_is_handling_input = self.focused_panel_is_handling_input();
+        let focus_before = self.focus();
+        let flag_index_before = self.flag_index();
+        let arg_index_before = self.arg_index();
         if let Some(action) = self.handle_focused_panel_key(key) {
+            let selection_changed = focus_before != self.focus()
+                || (focus_before == Focus::Flags && flag_index_before != self.flag_index())
+                || (focus_before == Focus::Args && arg_index_before != self.arg_index());
+            if selection_changed {
+                self.completion_generation += 1;
+                self.pending_completion = None;
+            }
             return action;
         }
         if focused_panel_is_handling_input {
+            return Action::None;
+        }
+
+        if self.handle_repeated_key(key) {
             return Action::None;
         }
 
@@ -1542,6 +1696,7 @@ impl App {
                     .and_then(|(_, v)| match v {
                         FlagValue::String(s) => Some(s.clone()),
                         FlagValue::EmptyString => Some(String::new()),
+                        FlagValue::Repeated(_) => self.current_repeated_flag_value(flag_idx),
                         _ => None,
                     })
                     .unwrap_or_default()
@@ -1618,6 +1773,7 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
+                        FlagValue::Repeated(_) => self.current_repeated_flag_value(index),
                         _ => None,
                     })
                     .unwrap_or(current_value);
@@ -1636,6 +1792,7 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
+                        FlagValue::Repeated(_) => self.current_repeated_flag_value(index),
                         _ => None,
                     })
                     .unwrap_or(current_value);

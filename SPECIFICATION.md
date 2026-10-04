@@ -443,6 +443,8 @@ The `build_command()` method assembles the final command string (for display):
    - Flags with choices: `--flag-name selected-choice`
 5. Append all non-empty argument values in positional order.
 
+For value flags, a repeated flag occurrence emits the flag prefix once followed by that occurrence's values. Multiple values on one occurrence remain adjacent; the next occurrence emits a new prefix. Repeatable positional arguments emit one argv element for each supplied row. Omitted blank rows are skipped and supplied empty strings remain empty argv elements.
+
 ### Command Parts for Execution
 
 The `build_command_parts()` method produces a `Vec<String>` of separate arguments for process execution:
@@ -460,6 +462,15 @@ The `build_command_parts()` method produces a `Vec<String>` of separate argument
 - Negatable flags (`NegBool`) that are `None` (omitted) emit nothing. `Some(true)` emits the positive flag (e.g., `--color`). `Some(false)` emits the negate string (e.g., `--no-color`).
 - Count flags with count 0 are omitted.
 - String flags with empty values are omitted.
+- Repeated flag occurrences and values retain their two separate levels. Defaults and provider contexts use arrays, with nested arrays when both levels repeat.
+
+### Repeated-field editing
+
+- `Ctrl+N` / `Ctrl+D` add or remove a positional row, or a value within a repeatable flag occurrence.
+- `Ctrl+Alt+N` / `Ctrl+Alt+D` add or remove a repeatable flag occurrence.
+- `Alt+Left` / `Alt+Right` select a flag occurrence; `Ctrl+Left` / `Ctrl+Right` select a value within that occurrence.
+- Each occurrence and positional row has its own supplied state. New blank rows remain omitted until edited; an explicitly entered empty string is supplied.
+- Submission validates flag occurrence limits independently from multi-value limits inside each occurrence.
 
 ## Scrolling
 

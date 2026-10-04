@@ -151,6 +151,9 @@ impl App {
                 .map(|(_, value)| match value {
                     crate::app::FlagValue::String(value) => value.clone(),
                     crate::app::FlagValue::EmptyString => String::new(),
+                    crate::app::FlagValue::Repeated(_) => {
+                        self.current_repeated_flag_value(index).unwrap_or_default()
+                    }
                     _ => String::new(),
                 })
                 .unwrap_or_default()
@@ -244,6 +247,37 @@ mod tests {
             .unwrap();
         app.poll_completion();
         assert!(app.arg_panel.filtered_choices()[0].1.contains("new"));
+    }
+
+    #[test]
+    fn selecting_another_repeatable_positional_row_invalidates_completion() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            arg "<files>..." var=#true
+            complete "files" run="printf 'choice\\n'"
+        "#
+        .parse()
+        .unwrap();
+        let mut app = App::new(spec);
+        app.arg_values.push(app.arg_values[0].clone());
+        app.arg_panel.set_total(app.arg_values.len());
+        app.set_focus(Focus::Args);
+        assert!(app.start_completion(false, 0, "files", 0));
+        let generation = app.completion_generation;
+
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Down,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+
+        assert_eq!(app.arg_index(), 1);
+        assert!(app.completion_generation > generation);
+        assert!(app.pending_completion.is_none());
     }
 
     #[cfg(unix)]

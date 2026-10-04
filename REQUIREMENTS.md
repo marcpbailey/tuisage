@@ -141,6 +141,8 @@ The `--compose` option returns one JSON object with the executable and ordered a
 
 Every execute/compose submission checks required arguments/options, required subcommands, declared choices, and repeated-value minimum/maximum limits. Failure leaves the form open, displays the field identifier and correction in the status row, and neither executes nor emits a command. Explicit empty supplied strings are distinguished from omitted fields.
 
+For repeated fields, positional rows and flag values are editable independently. A repeated flag preserves one ordered value group per occurrence through command construction, defaults, provider context, completion, and validation. Minimum and maximum limits apply to occurrences and to the values within each occurrence as declared. A blank unsupplied editor row does not become an argv value; an explicit empty string does.
+
 `--validate PATH` additionally invokes a provider executable directly, sending the version-1 JSON form context on stdin. The request includes executable, argv, command path, optional field, and a map of canonical field identifiers to values. It must return `{ "version": 1, "errors": {} }` for success, or errors keyed by field identifier. Nonzero exit, malformed response, unsupported version, or a five-second timeout blocks submission. The operational command is never invoked for validation. Usage 2.16.1 does not expose a general conditional-rule API; dependent command-specific constraints belong in this provider.
 
 ### Context-aware completion

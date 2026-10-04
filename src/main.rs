@@ -12,6 +12,7 @@ mod components;
 mod defaults;
 mod fields;
 mod provider;
+mod repeated;
 mod theme;
 mod ui;
 mod validation;

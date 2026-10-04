@@ -21,6 +21,49 @@ impl App {
                 let value = values
                     .and_then(|values| values.iter().find(|(name, _)| name == &flag.name))
                     .map(|(_, value)| value);
+                let id = field_id(path, "flags", &flag.name, depth == 0 && flag.global);
+                if let Some(FlagValue::Repeated(groups)) = value {
+                    let occurrences: Vec<_> = groups
+                        .iter()
+                        .filter_map(|group| {
+                            let supplied: Vec<_> = group
+                                .iter()
+                                .filter(|input| input.supplied || !input.value.is_empty())
+                                .map(|input| input.value.as_str())
+                                .collect();
+                            (!supplied.is_empty()).then_some(supplied)
+                        })
+                        .collect();
+                    let occurrence_count = if flag.var {
+                        occurrences.len()
+                    } else {
+                        usize::from(!occurrences.is_empty())
+                    };
+                    check_count(
+                        &mut errors,
+                        &id,
+                        occurrence_count,
+                        flag.required,
+                        if flag.var { flag.var_min } else { None },
+                        if flag.var { flag.var_max } else { None },
+                    );
+                    if let Some(arg) = &flag.arg {
+                        for supplied in &occurrences {
+                            check_choices(&mut errors, &id, supplied, arg.choices.as_ref());
+                            if arg.var {
+                                check_count(
+                                    &mut errors,
+                                    &id,
+                                    supplied.len(),
+                                    arg.required,
+                                    arg.var_min,
+                                    arg.var_max,
+                                );
+                            }
+                        }
+                    }
+                    continue;
+                }
                 let count = match value {
                     Some(FlagValue::Bool(true) | FlagValue::NegBool(Some(_))) => 1,
                     Some(FlagValue::Count(count)) => *count as usize,
@@ -28,7 +71,6 @@ impl App {
                     Some(FlagValue::EmptyString) => 1,
                     _ => 0,
                 };
-                let id = field_id(path, "flags", &flag.name, depth == 0 && flag.global);
                 check_count(
                     &mut errors,
                     &id,
@@ -234,5 +276,41 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("Validation failed"));
+    }
+
+    #[test]
+    fn repeated_flag_occurrence_and_inner_value_limits_are_independent() {
+        let spec: usage::Spec = r#"
+            name "demo"
+            flag "--group... <item>..." var=#true var_min=2 var_max=3 {
+                arg "<item>..." var=#true var_min=2 var_max=3
+            }
+        "#
+        .parse()
+        .unwrap();
+        let mut app = App::new(spec);
+        let id = "root/flags/group";
+        assert!(app.validation_errors()[id].contains("at least 2"));
+
+        app.current_flag_values_mut()[0].1 = FlagValue::Repeated(vec![
+            vec![crate::app::RepeatInput::supplied("a")],
+            vec![
+                crate::app::RepeatInput::supplied("b"),
+                crate::app::RepeatInput::supplied("c"),
+            ],
+        ]);
+        assert!(app.validation_errors()[id].contains("at least 2"));
+
+        app.current_flag_values_mut()[0].1 = FlagValue::Repeated(vec![
+            vec![
+                crate::app::RepeatInput::supplied("a"),
+                crate::app::RepeatInput::supplied("b"),
+            ],
+            vec![
+                crate::app::RepeatInput::supplied("c"),
+                crate::app::RepeatInput::supplied("d"),
+            ],
+        ]);
+        assert!(!app.validation_errors().contains_key(id));
     }
 }

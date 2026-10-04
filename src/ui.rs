@@ -186,14 +186,51 @@ fn render_flag_list(
         if app.flag_locked(index) {
             flag.help = Some(format!("[locked] {}", flag.help.as_deref().unwrap_or("")));
         }
+        if app.flag_repeatable(index) {
+            let (group, value) = app.flag_repeat_position(index);
+            let groups = app
+                .current_flag_values()
+                .get(index)
+                .and_then(|(_, value)| match value {
+                    crate::app::FlagValue::Repeated(groups) => Some(groups),
+                    _ => None,
+                });
+            let group_count = groups.map_or(0, Vec::len);
+            let value_count = groups
+                .and_then(|groups| groups.get(group))
+                .map_or(0, Vec::len);
+            let mut help = flag.help.take().unwrap_or_default();
+            if !help.is_empty() {
+                help.push(' ');
+            }
+            help.push_str(&format!(
+                "[occurrence {}/{}, value {}/{}]",
+                group + 1,
+                group_count.max(1),
+                value + 1,
+                value_count.max(1)
+            ));
+            flag.help = Some(help);
+        }
     }
     let flags: Vec<_> = display_flags.iter().collect();
     let key = app.command_path.join(" ");
-    let flag_values: Vec<(String, crate::app::FlagValue)> = app
+    let mut flag_values: Vec<(String, crate::app::FlagValue)> = app
         .flag_values
         .get(&key)
         .cloned()
         .unwrap_or_default();
+    for (index, (_, value)) in flag_values.iter_mut().enumerate() {
+        if matches!(value, crate::app::FlagValue::Repeated(_)) {
+            *value = match app.current_repeated_flag_input(index) {
+                Some(input) if input.supplied && input.value.is_empty() => {
+                    crate::app::FlagValue::EmptyString
+                }
+                Some(input) => crate::app::FlagValue::String(input.value),
+                None => crate::app::FlagValue::String(String::new()),
+            };
+        }
+    }
     let flag_defaults: Vec<Option<String>> =
         flags.iter().map(|f| f.default.first().cloned()).collect();
 
@@ -224,6 +261,26 @@ fn render_arg_list(
 
     let mut display_args = app.arg_values.clone();
     for (index, arg) in display_args.iter_mut().enumerate() {
+        if app
+            .current_command()
+            .args
+            .iter()
+            .any(|spec| spec.name == arg.name && spec.var)
+        {
+            let position = app.arg_values[..index]
+                .iter()
+                .filter(|value| value.name == arg.name)
+                .count()
+                + 1;
+            let total = app
+                .arg_values
+                .iter()
+                .filter(|value| value.name == arg.name)
+                .count();
+            if total > 1 {
+                arg.name = format!("{} [{position}/{total}]", arg.name);
+            }
+        }
         if app.arg_locked(index) {
             arg.help = Some(format!("[locked] {}", arg.help.as_deref().unwrap_or("")));
         }
@@ -293,12 +350,54 @@ fn render_help_bar(
                 Keybind { key: "^r", desc: "run" },
                 Keybind { key: "q", desc: "quit" },
             ],
+            Focus::Flags if app.flag_has_repeated_occurrences(app.flag_index())
+                && app.flag_has_repeated_values(app.flag_index()) => &[
+                Keybind { key: "^n/^d", desc: "add/remove value" },
+                Keybind { key: "⌃⌥n/⌃⌥d", desc: "add/remove occurrence" },
+                Keybind { key: "⌥←/→", desc: "select occurrence" },
+                Keybind { key: "⌃←/→", desc: "select value" },
+                Keybind { key: "⏎", desc: "edit" },
+                Keybind { key: "↑↓", desc: "navigate" },
+                Keybind { key: "⇥", desc: "next" },
+                Keybind { key: "^r", desc: "run" },
+                Keybind { key: "q", desc: "quit" },
+            ],
+            Focus::Flags if app.flag_has_repeated_occurrences(app.flag_index()) => &[
+                Keybind { key: "⌃⌥n/⌃⌥d", desc: "add/remove occurrence" },
+                Keybind { key: "⌥←/→", desc: "select occurrence" },
+                Keybind { key: "⏎", desc: "edit" },
+                Keybind { key: "↑↓", desc: "navigate" },
+                Keybind { key: "⇥", desc: "next" },
+                Keybind { key: "^r", desc: "run" },
+                Keybind { key: "q", desc: "quit" },
+            ],
+            Focus::Flags if app.flag_has_repeated_values(app.flag_index()) => &[
+                Keybind { key: "^n/^d", desc: "add/remove value" },
+                Keybind { key: "⌃←/→", desc: "select value" },
+                Keybind { key: "⏎", desc: "edit" },
+                Keybind { key: "↑↓", desc: "navigate" },
+                Keybind { key: "⇥", desc: "next" },
+                Keybind { key: "^r", desc: "run" },
+                Keybind { key: "q", desc: "quit" },
+            ],
             Focus::Flags => &[
                 Keybind { key: "⏎/Space", desc: "toggle" },
                 Keybind { key: "⌫", desc: "clear" },
                 Keybind { key: "↑↓", desc: "navigate" },
                 Keybind { key: "⇥", desc: "next" },
                 Keybind { key: "/", desc: "filter" },
+                Keybind { key: "^u", desc: "reset" },
+                Keybind { key: "^r", desc: "run" },
+                Keybind { key: "q", desc: "quit" },
+            ],
+            Focus::Args if app
+                .arg_values
+                .get(app.arg_index())
+                .is_some_and(|arg| app.current_command().args.iter().any(|spec| spec.name == arg.name && spec.var)) => &[
+                Keybind { key: "^n/^d", desc: "add/remove value" },
+                Keybind { key: "⏎", desc: "edit" },
+                Keybind { key: "↑↓", desc: "navigate values" },
+                Keybind { key: "⇥", desc: "next" },
                 Keybind { key: "^u", desc: "reset" },
                 Keybind { key: "^r", desc: "run" },
                 Keybind { key: "q", desc: "quit" },

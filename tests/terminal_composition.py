@@ -86,13 +86,30 @@ with tempfile.TemporaryDirectory() as directory:
     spec = root / 'sample.usage.kdl'
     spec.write_text(
         'name "fake"\nbin "' + str(child) + '"\n'
-        'cmd "run" {\n  arg "[value]"\n}\n'
+        'cmd "run" {\n  arg "[value]..."\n}\n'
     )
     args = ['--compose', '--spec-file', str(spec)]
     output, _ = session(args, b'\x12')
     assert json.loads(output) == {'executable': str(child), 'argv': ['run']}
     assert output.count(b'\n') == 1
     assert b'\x1b' not in output
+    assert not marker.exists(), 'compose executed the child'
+    output, _ = session(args, [
+        (0.1, b'\t'),
+        (0.2, b'\x0e'),
+        (0.3, b'\r'),
+        (0.4, b'one'),
+        (0.5, b'\r'),
+        (0.6, b'\x0e'),
+        (0.7, b'\r'),
+        (0.8, b'two'),
+        (0.9, b'\r'),
+        (1.0, b'\x12'),
+    ])
+    assert json.loads(output) == {
+        'executable': str(child),
+        'argv': ['run', 'one', 'two'],
+    }, output
     assert not marker.exists(), 'compose executed the child'
     # Default Tab focus, Return to edit and commit an empty value, Ctrl+R to submit.
     output, _ = session(args, b'\t\r\r\x12')

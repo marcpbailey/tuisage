@@ -128,8 +128,7 @@ impl ListPanelBase {
         self.list_state.set_total(total);
     }
 
-    #[cfg(test)]
-    pub fn select(&mut self, index: usize) {
+    pub(crate) fn select(&mut self, index: usize) {
         self.list_state.select(index);
     }
 
