@@ -70,8 +70,6 @@ pub enum FlagValue {
     NegBool(Option<bool>),
     /// Flag with a string value.
     String(String),
-    /// Explicit string values, including empty values.
-    Strings(Vec<String>),
     /// An explicitly supplied empty string value.
     EmptyString,
     /// Count flag (e.g., -vvv).
@@ -670,7 +668,7 @@ impl App {
                                 let new_val = FlagValue::String(String::new());
                                 self.sync_global_flag(&flag_name, &new_val);
                             }
-                            FlagValue::Strings(_) | FlagValue::EmptyString => {
+                            FlagValue::EmptyString => {
                                 *value = FlagValue::String(String::new());
                                 self.sync_global_flag(
                                     &flag_name,
@@ -1521,9 +1519,6 @@ impl App {
                     .and_then(|(_, v)| match v {
                         FlagValue::String(s) => Some(s.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => {
-                            Some(values.last().cloned().unwrap_or_default())
-                        }
                         _ => None,
                     })
                     .unwrap_or_default()
@@ -1600,9 +1595,6 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => {
-                            Some(values.last().cloned().unwrap_or_default())
-                        }
                         _ => None,
                     })
                     .unwrap_or(current_value);
@@ -1621,9 +1613,6 @@ impl App {
                     .and_then(|(_, value)| match value {
                         FlagValue::String(text) => Some(text.clone()),
                         FlagValue::EmptyString => Some(String::new()),
-                        FlagValue::Strings(values) => {
-                            Some(values.last().cloned().unwrap_or_default())
-                        }
                         _ => None,
                     })
                     .unwrap_or(current_value);

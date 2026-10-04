@@ -260,7 +260,6 @@ impl FlagPanelComponent {
         let current_value = match value?.clone() {
             FlagValue::String(value) => value,
             FlagValue::EmptyString => String::new(),
-            FlagValue::Strings(values) => values.last().cloned().unwrap_or_default(),
             _ => return Some(FlagPanelEnterRequest::Toggle),
         };
 
@@ -302,7 +301,7 @@ impl FlagPanelComponent {
         // indicator width: "✓ "=2, "○ "=2, "[n] "=varies, "[·] "=4, "[•] "=4
         let indicator_width = match value {
             Some(FlagValue::Count(n)) => format!("[{}] ", n).chars().count(),
-            Some(FlagValue::String(_) | FlagValue::EmptyString | FlagValue::Strings(_)) => 4,
+            Some(FlagValue::String(_) | FlagValue::EmptyString) => 4,
             _ => 2,
         };
 
@@ -712,7 +711,6 @@ impl Widget for FlagPanel<'_> {
                 let string_value = value.and_then(|(_, value)| match value {
                     FlagValue::String(s) => Some(s.clone()),
                     FlagValue::EmptyString => Some(String::new()),
-                    FlagValue::Strings(values) => Some(values.join(" | ")),
                     _ => None,
                 });
                 if let Some(s) = string_value.as_ref() {
@@ -854,10 +852,6 @@ fn render_flag_indicator<'a>(value: Option<&FlagValue>, colors: &UiColors) -> Sp
                 Span::styled("[•] ", Style::default().fg(colors.arg))
             }
         }
-        Some(FlagValue::Strings(values)) => Span::styled(
-            format!("[{}] ", values.len()),
-            Style::default().fg(colors.arg),
-        ),
         Some(FlagValue::EmptyString) => Span::styled("[•] ", Style::default().fg(colors.arg)),
         None => Span::styled("○ ", Style::default().fg(colors.help)),
     }

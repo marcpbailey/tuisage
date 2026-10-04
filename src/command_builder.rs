@@ -85,20 +85,6 @@ pub fn format_flag_value(
                 Some(format!("{prefix} {s}"))
             }
         }
-        FlagValue::Strings(values) => {
-            let prefix = if let Some(long) = flag.long.first() {
-                format!("--{long}")
-            } else {
-                let short = flag.short.first()?;
-                format!("-{short}")
-            };
-            let rendered = if values.len() == 1 && values[0].is_empty() {
-                "\"\"".to_string()
-            } else {
-                values.join(" ")
-            };
-            Some(format!("{prefix} {rendered}"))
-        }
     }
 }
 
@@ -166,20 +152,6 @@ pub fn format_flag_parts(
                 return;
             }
             parts.push(s.clone());
-        }
-        FlagValue::Strings(values) => {
-            let Some(prefix) = flag
-                .long
-                .first()
-                .map(|long| format!("--{long}"))
-                .or_else(|| flag.short.first().map(|short| format!("-{short}")))
-            else {
-                return;
-            };
-            for value in values {
-                parts.push(prefix.clone());
-                parts.push(value.clone());
-            }
         }
     }
 }
