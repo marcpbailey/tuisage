@@ -1,5 +1,5 @@
 use crate::app::{App, FlagValue};
-use crate::defaults::field_id;
+use crate::fields::field_id;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
