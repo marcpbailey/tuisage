@@ -181,8 +181,15 @@ fn main() -> color_eyre::Result<()> {
     )?;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(tty))?;
     let mut app = App::new(spec);
-    if let Some(initial) = initial { app.configure_defaults(initial); }
-    let result = run_event_loop(&mut terminal, &mut app, args.compose, args.validate.as_deref());
+    if let Some(initial) = initial {
+        app.configure_defaults(initial);
+    }
+    let result = run_event_loop(
+        &mut terminal,
+        &mut app,
+        args.compose,
+        args.validate.as_deref(),
+    );
     drop(terminal);
     drop(guard);
 
@@ -302,8 +309,14 @@ fn run_event_loop(
                     app::Action::None => {}
                     app::Action::Quit => return Ok(None),
                     app::Action::Execute => {
-                        if !app.validate_submission(validator) { continue; }
-                        if compose { return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?)); }
+                        if !app.validate_submission(validator) {
+                            continue;
+                        }
+                        if compose {
+                            return Ok(Some(ComposedCommand::from_parts(
+                                app.build_command_parts(),
+                            )?));
+                        }
                         execute_current_command(terminal, app)?;
                     }
                 }
@@ -312,8 +325,14 @@ fn run_event_loop(
                 app::Action::None => {}
                 app::Action::Quit => return Ok(None),
                 app::Action::Execute => {
-                    if !app.validate_submission(validator) { continue; }
-                    if compose { return Ok(Some(ComposedCommand::from_parts(app.build_command_parts())?)); }
+                    if !app.validate_submission(validator) {
+                        continue;
+                    }
+                    if compose {
+                        return Ok(Some(ComposedCommand::from_parts(
+                            app.build_command_parts(),
+                        )?));
+                    }
                     execute_current_command(terminal, app)?;
                 }
             },

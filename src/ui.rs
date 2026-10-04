@@ -244,7 +244,14 @@ fn render_help_bar(
     layout: &mut UiLayout,
 ) {
     if let Some(error) = &app.submission_error {
-        frame.render_widget(ratatui::widgets::Paragraph::new(error.as_str()).style(ratatui::style::Style::default().fg(colors.required).bg(colors.bar_bg)), area);
+        frame.render_widget(
+            ratatui::widgets::Paragraph::new(error.as_str()).style(
+                ratatui::style::Style::default()
+                    .fg(colors.required)
+                    .bg(colors.bar_bg),
+            ),
+            area,
+        );
         return;
     }
     let keybinds: &[Keybind] = if app.is_theme_picking() {
