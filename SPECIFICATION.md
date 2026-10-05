@@ -506,10 +506,10 @@ Themes can be cycled at runtime with `]`/`[` keys for quick switching, or `T` to
 
 ### Keymaps and bottom-row actions
 
-- Built-in mappings remain unchanged, including Ctrl+R submitting from any builder panel. A keymap can opt in to Shift+Enter, Cmd+Enter, or keypad Enter as submit keys when the event is reported distinctly. Ordinary Enter retains its existing field behavior.
+- Built-in mappings remain unchanged, including Ctrl+R submitting from any builder panel. A keymap can opt in to plain Enter or keypad Enter as submit keys. Without a keymap, Enter retains its existing field behavior.
 - When a choice or theme picker popup is open, it handles Enter as its selection action before global keymap bindings.
 - Load `$XDG_CONFIG_HOME/tuisage/keymap.toml`; use `~/.config/tuisage/keymap.toml` if XDG_CONFIG_HOME is unset or empty. `--keymap PATH` selects an explicit file. A missing default file is ignored; an explicitly requested missing or invalid file is an error before terminal initialization.
-- TOML `[bindings]` entries map key names to `submit`, `cancel`, `next-field`, or `previous-field`. Later entries override one key at a time. `unbound` removes the built-in behavior for that key. The shipped sample demonstrates optional Shift+Enter, Cmd+Enter, and keypad Enter submit bindings while keeping Ctrl+R. These added submit keys are not built-in defaults.
+- TOML `[bindings]` entries map key names to `submit`, `cancel`, `next-field`, or `previous-field`. Later entries override one key at a time. `unbound` removes the built-in behavior for that key. The shipped sample demonstrates optional plain Enter and keypad Enter submit bindings while keeping Ctrl+R. These added submit keys are not built-in defaults.
 - On Unix, request crossterm's supported keyboard enhancement flags for disambiguated modified keys. Pop the negotiated keyboard mode and disable mouse capture during cleanup, including error exits. Do not claim distinctions terminals do not report.
 - Every visible help-row shortcut has a mouse hit area based on its rendered width. Mouse activation dispatches the same key handler. The theme indicator dispatches the same theme-picker action as its keyboard shortcut. Rendering recalculates hit areas after resize.
 

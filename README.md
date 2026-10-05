@@ -129,11 +129,11 @@ Click a shortcut in the bottom help row to perform the same action as its keyboa
 
 TuiSage keeps its built-in shortcuts and accepts individual overrides in an optional TOML file at `$XDG_CONFIG_HOME/tuisage/keymap.toml`. If `XDG_CONFIG_HOME` is unset or empty, it checks `~/.config/tuisage/keymap.toml`. Use `--keymap PATH` to select a file explicitly. A missing default file is ignored. A missing or invalid explicit file is reported before the terminal UI starts.
 
-The sample at [`examples/keymap.toml`](examples/keymap.toml) demonstrates optional Shift+Enter, Cmd+Enter, and keypad Enter submit bindings while keeping Ctrl+R. The built-in mappings remain unchanged when no keymap is configured. Supported named actions include `submit`, `cancel`, `next-field`, and `previous-field`. Map a key to `unbound` to disable that individual built-in binding.
+The sample at [`examples/keymap.toml`](examples/keymap.toml) demonstrates optional plain Enter and keypad Enter submit bindings while keeping Ctrl+R. The built-in mappings remain unchanged when no keymap is configured. Supported named actions include `submit`, `cancel`, `next-field`, and `previous-field`. Map a key to `unbound` to disable that individual built-in binding.
 
 Key names accept `ctrl`, `alt`, `shift`, and `cmd` or `super` modifiers. Use names such as `enter`, `keypad-enter`, `tab`, `backtab`, `escape`, or a single character.
 
-Shift+Enter and Cmd+Enter work only when the terminal reports those distinctions. Keypad Enter is detected only when the terminal reports it separately from Return. TuiSage requests the supported keyboard enhancement protocol on Unix terminals and restores the keyboard and mouse modes when it exits. Terminals that collapse these events cannot distinguish them for the application.
+Keypad Enter is detected only when the terminal reports it separately from Return. TuiSage requests the supported keyboard enhancement protocol on Unix terminals and restores the keyboard and mouse modes when it exits. Terminals that collapse these events cannot distinguish them for the application.
 
 ## Compatibility
 

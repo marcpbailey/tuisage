@@ -1,10 +1,9 @@
 # Copy to $XDG_CONFIG_HOME/tuisage/keymap.toml or ~/.config/tuisage/keymap.toml.
-# Modified and keypad Enter keys work only when the terminal reports them separately.
+# Plain and keypad Enter can be mapped to submit.
 # These additional submit bindings are opt-in; TuiSage's built-in mappings stay unchanged.
 [bindings]
 "ctrl+r" = "submit"
-"shift+enter" = "submit"
-"cmd+enter" = "submit"
+"enter" = "submit"
 "keypad-enter" = "submit"
 "ctrl+c" = "cancel"
 "q" = "cancel"

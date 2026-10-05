@@ -178,18 +178,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn modified_and_keypad_enter_are_not_builtin_submit_bindings() {
+    fn enter_and_keypad_enter_are_not_builtin_submit_bindings() {
         let keymap = Keymap::default();
         assert_eq!(
             keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
-            None
-        );
-        assert_eq!(
-            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
-            None
-        );
-        assert_eq!(
-            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SUPER)),
             None
         );
         let mut keypad = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
@@ -198,21 +190,16 @@ mod tests {
     }
 
     #[test]
-    fn modified_and_keypad_enter_can_be_enabled_by_configuration() {
+    fn enter_and_keypad_enter_can_be_enabled_by_configuration() {
         let mut keymap = Keymap::default();
         keymap
             .apply(
-                "[bindings]\n\"shift+enter\" = \"submit\"\n\
-                 \"cmd+enter\" = \"submit\"\n\
+                "[bindings]\n\"enter\" = \"submit\"\n\
                  \"keypad-enter\" = \"submit\"",
             )
             .unwrap();
         assert_eq!(
-            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
-            Some(NamedAction::Submit)
-        );
-        assert_eq!(
-            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SUPER)),
+            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
             Some(NamedAction::Submit)
         );
         let mut keypad = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);

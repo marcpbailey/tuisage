@@ -3760,17 +3760,17 @@ cmd "other" {
     }
 
     #[test]
-    fn modified_enter_is_not_a_default_submit_binding_and_cancel_still_quits() {
+    fn plain_enter_is_not_a_default_submit_binding_and_cancel_still_quits() {
         let mut app = App::new(sample_spec());
-        let shift_enter = crossterm::event::KeyEvent::new(
+        let enter = crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Enter,
-            crossterm::event::KeyModifiers::SHIFT,
+            crossterm::event::KeyModifiers::NONE,
         );
         let cancel = crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Char('q'),
             crossterm::event::KeyModifiers::NONE,
         );
-        assert_ne!(app.handle_key(shift_enter), Action::Execute);
+        assert_ne!(app.handle_key(enter), Action::Execute);
         let ctrl_r = crossterm::event::KeyEvent::new(
             crossterm::event::KeyCode::Char('r'),
             crossterm::event::KeyModifiers::CONTROL,
