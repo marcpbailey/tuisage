@@ -6,7 +6,11 @@ use crate::app::{ArgValue, FlagValue};
 
 /// Resolve the flag spec for a given name, checking the provided flags first,
 /// then falling back to global flags on the root command.
-fn find_flag_spec<'a>(name: &str, flags: &'a [SpecFlag], global_flags: &'a [SpecFlag]) -> Option<&'a SpecFlag> {
+fn find_flag_spec<'a>(
+    name: &str,
+    flags: &'a [SpecFlag],
+    global_flags: &'a [SpecFlag],
+) -> Option<&'a SpecFlag> {
     flags
         .iter()
         .find(|f| f.name == name)
@@ -27,10 +31,9 @@ pub fn format_flag_value(
         FlagValue::Bool(true) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             Some(prefix)
         }
@@ -39,10 +42,9 @@ pub fn format_flag_value(
         FlagValue::NegBool(Some(true)) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             Some(prefix)
         }
@@ -65,10 +67,9 @@ pub fn format_flag_value(
         FlagValue::String(s) => {
             let prefix = if let Some(long) = flag.long.first() {
                 format!("--{long}")
-            } else if let Some(short) = flag.short.first() {
-                format!("-{short}")
             } else {
-                return None;
+                let short = flag.short.first()?;
+                format!("-{short}")
             };
             if s.contains(' ') {
                 Some(format!("{prefix} \"{s}\""))
