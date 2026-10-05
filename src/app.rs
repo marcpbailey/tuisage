@@ -235,6 +235,7 @@ pub struct App {
 
     /// Current color theme.
     pub theme_name: ThemeName,
+    pub automatic_theme: bool,
 
     /// Path of subcommand names derived from the tree selection.
     /// Empty means we're at the root command.
@@ -277,6 +278,7 @@ pub struct App {
 }
 
 impl App {
+    #[cfg(test)]
     pub fn new(spec: Spec) -> Self {
         Self::with_theme(spec, ThemeName::default())
     }
@@ -336,6 +338,7 @@ impl App {
             mode: AppMode::Builder,
             execution: None,
             theme_name,
+            automatic_theme: false,
             command_path: Vec::new(),
             command_panel,
             flag_panel: FilterableComponent::new(FlagPanelComponent::new()),
@@ -386,11 +389,13 @@ impl App {
 
     /// Cycle to the next theme.
     pub fn next_theme(&mut self) {
+        self.automatic_theme = false;
         self.theme_name = self.theme_name.next();
     }
 
     /// Cycle to the previous theme.
     pub fn prev_theme(&mut self) {
+        self.automatic_theme = false;
         self.theme_name = self.theme_name.prev();
     }
 
@@ -449,9 +454,13 @@ impl App {
     fn process_theme_picker_action(&mut self, action: ThemePickerAction) {
         match action {
             ThemePickerAction::PreviewTheme(name) => {
+                if !self.is_theme_picking() {
+                    self.automatic_theme = false;
+                }
                 self.theme_name = name;
             }
             ThemePickerAction::Confirmed => {
+                self.automatic_theme = false;
                 // Theme already set by preview — nothing to do.
             }
             ThemePickerAction::Cancelled(original) => {
@@ -1651,7 +1660,12 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => Action::Quit,
-            KeyCode::Char('T') => {
+            KeyCode::Char('T') | KeyCode::Char('t')
+                if key.code == KeyCode::Char('T')
+                    || key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::SHIFT) =>
+            {
                 self.open_theme_picker();
                 Action::None
             }
@@ -4222,6 +4236,30 @@ cmd "run" {
 
         // Verify the execution component still exists
         assert!(app.execution.is_some());
+    }
+
+    #[test]
+    fn clicked_theme_disables_automatic_switching() {
+        let mut app = App::new(sample_spec());
+        app.automatic_theme = true;
+        app.open_theme_picker();
+        let action = app
+            .theme_picker
+            .click_at(85, 7, Some(ratatui::layout::Rect::new(80, 5, 18, 12)))
+            .unwrap();
+        app.process_theme_picker_action(action);
+        assert!(!app.automatic_theme);
+        assert!(!app.is_theme_picking());
+    }
+
+    #[test]
+    fn shifted_lowercase_t_opens_theme_picker() {
+        let mut app = App::new(sample_spec());
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('t'),
+            crossterm::event::KeyModifiers::SHIFT,
+        ));
+        assert!(app.is_theme_picking());
     }
 
     #[test]

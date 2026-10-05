@@ -152,3 +152,12 @@ Legacy `complete ... run="..."` providers retain line-based output. They additio
 A structured provider uses `complete "field" type="tuisage-json-v1:/path/to/provider"`. It receives the same JSON on stdin and returns `{ "version": 1, "choices": [{ "value": "...", "description": "optional" }] }`. This format can return explicit empty values. Providers run off the input thread. Each result is checked against its request generation and current form context; old responses are discarded. Changed context refreshes an open completion, while errors or empty responses retain manual input. No application discovery logic is built into TuiSage.
 
 Completion results update suggestions in place, preserving manual text and cursor position while a provider is running.
+### Named startup and automatic themes
+
+Use `tuisage --theme catppuccin-latte mytool --usage` to select a named theme. Names and aliases use ratatui-themes' existing parser, including hyphen and underscore spelling. Omitted options retain Dracula.
+
+Use `--theme auto --theme-light catppuccin-latte --theme-dark dracula` for automatic appearance. Both names must validate before terminal startup. macOS uses system AppleInterfaceStyle; Linux uses the desktop portal when available. Elsewhere, or when Linux supplies no preference, COLORFGBG is a terminal-background fallback, then the dark theme. System appearance has priority over terminal appearance. Polling occurs once a second outside the input thread. Manual cycling or confirming a theme disables automatic switching for the session; cancelling the picker retains automatic mode. Form values and focus are preserved on appearance changes.
+
+The whole frame receives the palette foreground/background before widgets render. No terminal OSC palette mutation is used. The execution view receives the same base background while retaining child terminal colours.
+
+Mouse selection of a theme disables automatic appearance changes. Shift+T opens the theme picker, including terminals that report it as lowercase t with the Shift modifier.

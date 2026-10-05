@@ -84,6 +84,18 @@ struct Args {
     #[arg(long)]
     compose: bool,
 
+    /// Startup theme name, or auto with --theme-light and --theme-dark
+    #[arg(long)]
+    theme: Option<String>,
+
+    /// Named theme for automatic light appearance
+    #[arg(long)]
+    theme_light: Option<ratatui_themes::ThemeName>,
+
+    /// Named theme for automatic dark appearance
+    #[arg(long)]
+    theme_dark: Option<ratatui_themes::ThemeName>,
+
     /// Command to run to get the usage spec (e.g., "mycli --usage")
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     spec_cmd: Vec<String>,
@@ -105,6 +117,9 @@ fn main() -> color_eyre::Result<()> {
         print!("{}", String::from_utf8_lossy(&buf));
         return Ok(());
     }
+
+    let theme_selection =
+        theme::ThemeSelection::parse(args.theme.as_deref(), args.theme_light, args.theme_dark)?;
 
     // Determine the usage spec source
     let has_spec_cmd = !args.spec_cmd.is_empty();
@@ -182,15 +197,18 @@ fn main() -> color_eyre::Result<()> {
         crossterm::cursor::Hide
     )?;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(tty))?;
-    let mut app = App::new(spec);
+    let mut app = App::with_theme(spec, theme_selection.initial());
+    app.automatic_theme = theme_selection.is_automatic();
     if let Some(initial) = initial {
         app.configure_defaults(initial);
     }
+    let appearance = theme_selection.watch();
     let result = run_event_loop(
         &mut terminal,
         &mut app,
         args.compose,
         args.validate.as_deref(),
+        appearance.as_ref(),
     );
     drop(terminal);
     drop(guard);
@@ -261,16 +279,31 @@ fn execute_current_command(terminal: &mut AppTerminal, app: &mut App) -> color_e
     Ok(())
 }
 
+fn apply_appearance_updates(
+    app: &mut App,
+    appearance: &std::sync::mpsc::Receiver<ratatui_themes::ThemeName>,
+) {
+    for name in appearance.try_iter() {
+        if app.automatic_theme && !app.is_theme_picking() {
+            app.theme_name = name;
+        }
+    }
+}
+
 fn run_event_loop(
     terminal: &mut AppTerminal,
     app: &mut App,
     compose: bool,
     validator: Option<&std::path::Path>,
+    appearance: Option<&std::sync::mpsc::Receiver<ratatui_themes::ThemeName>>,
 ) -> color_eyre::Result<Option<ComposedCommand>> {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
     loop {
         app.poll_completion();
+        if let Some(appearance) = appearance {
+            apply_appearance_updates(app, appearance);
+        }
         terminal.draw(|frame| ui::render(frame, app))?;
 
         // Use polling when in execution mode so we can refresh the terminal output
@@ -296,8 +329,10 @@ fn run_event_loop(
             continue;
         }
 
-        // Poll while a completion provider is running, otherwise block for input.
-        if app.pending_completion.is_some() && !event::poll(Duration::from_millis(100))? {
+        // Poll while completion or automatic appearance work is pending.
+        if (app.pending_completion.is_some() || appearance.is_some())
+            && !event::poll(Duration::from_millis(100))?
+        {
             continue;
         }
         // Normal builder mode
@@ -386,5 +421,28 @@ mod cli_tests {
         let command = ComposedCommand::from_parts(app.build_command_parts()).unwrap();
         assert_eq!(command.executable, "demo");
         assert_eq!(command.argv, vec![String::new()]);
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    use ratatui_themes::ThemeName;
+
+    #[test]
+    fn automatic_appearance_updates_theme_until_manual_override() {
+        let spec = "name \"fake\"".parse().expect("valid test spec");
+        let mut app = App::new(spec);
+        app.automatic_theme = true;
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        sender.send(ThemeName::CatppuccinLatte).unwrap();
+        apply_appearance_updates(&mut app, &receiver);
+        assert_eq!(app.theme_name, ThemeName::CatppuccinLatte);
+
+        app.automatic_theme = false;
+        sender.send(ThemeName::Nord).unwrap();
+        apply_appearance_updates(&mut app, &receiver);
+        assert_eq!(app.theme_name, ThemeName::CatppuccinLatte);
     }
 }
