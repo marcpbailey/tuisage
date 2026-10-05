@@ -95,22 +95,23 @@ explicit path is an error, so create a directory before supplying it.
 
 Automatic discovery checks these tiers in order and selects the first existing document:
 
-| Tier | macOS | Linux |
-|---|---|---|
-| User | `$HOME/Library/Application Support/TuiSage/commands` | `$XDG_DATA_HOME/tuisage/commands`, defaulting to `$HOME/.local/share/tuisage/commands` |
-| Executable | Beside the resolved command executable | Same |
-| Shared | `/Library/Application Support/TuiSage/commands` | Each `$XDG_DATA_DIRS` directory with `/tuisage/commands` appended; defaults are `/usr/local/share` and `/usr/share` |
+| Tier | macOS | Linux | Windows |
+|---|---|---|---|
+| User | `$HOME/Library/Application Support/TuiSage/commands` | `$XDG_DATA_HOME/tuisage/commands`, defaulting to `$HOME/.local/share/tuisage/commands` | `%LOCALAPPDATA%\TuiSage\commands` |
+| Executable | Beside the resolved command executable | Same | Same |
+| Shared | `/Library/Application Support/TuiSage/commands` | Each `$XDG_DATA_DIRS` directory with `/tuisage/commands` appended; defaults are `/usr/local/share` and `/usr/share` | `%PROGRAMDATA%\TuiSage\commands` |
 
 Documents are not merged. A higher-priority document replaces the lower-priority
 one in full. Executable symlinks are resolved before sidecar lookup. PATH lookup
 uses absolute directory entries. There is no implicit current-directory search.
 
 Application-data roots must be absolute. An absent, empty or relative HOME omits
-the HOME-based user tier. On Linux an absent, empty or relative `XDG_DATA_HOME`
-falls back to an absolute HOME plus `.local/share`. Relative `XDG_DATA_DIRS`
-entries are ignored; absent or empty `XDG_DATA_DIRS` uses the defaults above.
-These are the implemented macOS and Linux directory rules. This guide does not
-claim Windows support.
+the HOME-based macOS user tier. On Linux an absent, empty or relative
+`XDG_DATA_HOME` falls back to an absolute HOME plus `.local/share`. Relative
+`XDG_DATA_DIRS` entries are ignored; absent or empty `XDG_DATA_DIRS` uses the
+defaults above. On Windows an absent, empty or relative `LOCALAPPDATA` or
+`PROGRAMDATA` omits that tier. Windows uses the Local AppData and ProgramData
+known folders.
 
 ## Field identifiers
 

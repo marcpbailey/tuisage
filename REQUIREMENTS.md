@@ -155,7 +155,7 @@ Completion results update suggestions in place, preserving manual text and curso
 
 ### Presage companion documents
 
-Usage remains the command grammar. An optional KDL companion may bind named fixed or executable choice lists, defaults, locked values, validation, composition mode, and theme settings to existing fields. Select one document by the documented cascade; do not merge documents or search the current directory. Providers receive structured JSON and run with literal arguments. Usage-only commands retain their existing behavior.
+Usage remains the command grammar. An optional KDL companion may bind named fixed or executable choice lists, defaults, locked values, validation, composition mode, and theme settings to existing fields. Select one document by the documented cascade; do not merge documents or search the current directory. Providers receive structured JSON and run with literal arguments. On Windows, user and shared discovery use absolute LOCALAPPDATA and PROGRAMDATA roots. Usage-only commands retain their existing behavior.
 ### Named startup and automatic themes
 
 Use `tuisage --theme catppuccin-latte mytool --usage` to select a named theme. Names and aliases use ratatui-themes' existing parser, including hyphen and underscore spelling. Omitted options retain Dracula.

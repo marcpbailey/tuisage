@@ -76,7 +76,7 @@ When execution starts, `main.rs` just asks `App` to enter execution mode for the
 
 ### `src/companion.rs`
 
-Parses and validates optional KDL companion documents against existing Usage fields. Resolves the explicit path, user application-data, resolved executable sidecar, and shared application-data cascade without merging documents. It also enumerates selector documents and resolves provider and validator paths beside the selected document.
+Parses and validates optional KDL companion documents against existing Usage fields. Resolves the explicit path, user application-data, resolved executable sidecar, and shared application-data cascade without merging documents. On Windows the user and shared roots come from absolute LOCALAPPDATA and PROGRAMDATA values. It also enumerates selector documents and resolves provider and validator paths beside the selected document.
 
 ### `src/app.rs`
 

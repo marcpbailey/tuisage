@@ -100,6 +100,8 @@ Presage is optional metadata alongside Usage. It can supply named choice lists, 
 
 Providers and validators run as separate executables with literal arguments and structured JSON context. Review companion documents and executable permissions before installing them. See [PRESAGE.md](PRESAGE.md) for discovery, selectors, document syntax and provider responses.
 
+On Windows, automatic discovery uses `%LOCALAPPDATA%\TuiSage\commands` for user documents and `%PROGRAMDATA%\TuiSage\commands` for shared documents.
+
 To query the selected document and available selectors without opening the interface, run `tuisage --presage -- mytool --usage`.
 
 ## CLI Reference
