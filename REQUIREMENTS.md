@@ -152,6 +152,10 @@ Legacy `complete ... run="..."` providers retain line-based output. They additio
 A structured provider uses `complete "field" type="tuisage-json-v1:/path/to/provider"`. It receives the same JSON on stdin and returns `{ "version": 1, "choices": [{ "value": "...", "description": "optional" }] }`. This format can return explicit empty values. Providers run off the input thread. Each result is checked against its request generation and current form context; old responses are discarded. Changed context refreshes an open completion, while errors or empty responses retain manual input. No application discovery logic is built into TuiSage.
 
 Completion results update suggestions in place, preserving manual text and cursor position while a provider is running.
+
+### Presage companion documents
+
+Usage remains the command grammar. An optional KDL companion may bind named fixed or executable choice lists, defaults, locked values, validation, composition mode, and theme settings to existing fields. Select one document by the documented cascade; do not merge documents or search the current directory. Providers receive structured JSON and run with literal arguments. Usage-only commands retain their existing behavior.
 ### Named startup and automatic themes
 
 Use `tuisage --theme catppuccin-latte mytool --usage` to select a named theme. Names and aliases use ratatui-themes' existing parser, including hyphen and underscore spelling. Omitted options retain Dracula.

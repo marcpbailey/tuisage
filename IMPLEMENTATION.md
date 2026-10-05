@@ -66,13 +66,17 @@ This document describes how TuiSage is built — its architecture, code structur
 
 ### `src/main.rs`
 
-Entry point. Parses CLI arguments (clap derive), handles `--usage` output via `clap_usage`, loads the usage spec (from trailing arguments via `sh -c` / `cmd /C`, or `--spec-file`), applies `--cmd` override, initializes the ratatui terminal with mouse capture, and runs the event loop.
+Entry point. Parses CLI arguments (clap derive), handles `--usage` output via `clap_usage`, loads the usage spec (from trailing arguments via `sh -c` / `cmd /C`, or `--spec-file`), applies `--cmd` override, selects an optional Presage document, initializes the ratatui terminal with mouse capture, and runs the event loop.
 
 The event loop has two modes:
 - **Builder mode**: Blocking event read — delegates to `app.handle_key()` or `app.handle_mouse()`, which return an `Action` enum (`None`, `Quit`, or `Execute`).
 - **Execution mode**: Polling event read (16ms interval) — forwards keyboard input to the PTY, continuously redraws to show live terminal output.
 
 When execution starts, `main.rs` just asks `App` to enter execution mode for the current terminal size. `App` builds the command parts and delegates process creation to `ExecutionComponent::spawn()`, which owns PTY creation, parser setup, background threads, and cleanup wiring.
+
+### `src/companion.rs`
+
+Parses and validates optional KDL companion documents against existing Usage fields. Resolves the explicit path, user application-data, resolved executable sidecar, and shared application-data cascade without merging documents. It also enumerates selector documents and resolves provider and validator paths beside the selected document.
 
 ### `src/app.rs`
 
@@ -86,6 +90,7 @@ Core state and logic (~5500 lines, ~3500 of which are tests). Owns all mutable a
 - **`FlagValue`** — `Bool(bool)`, `NegBool(Option<bool>)` (None=omitted, Some(true)=on, Some(false)=off), `String(String)`, `Count(u32)`.
 - **`ArgValue`** — name, value, required, choices, help.
 - **`App`** — main application state struct.
+- **`companion`**: optional Presage settings loaded for this invocation.
 
 #### `App` Struct Fields
 
@@ -205,6 +210,7 @@ Semantic color palette (~80 lines). `UiColors` is derived from the active `Theme
 | `clap` | 4 | CLI argument parsing | `derive` feature for struct-based arg definitions |
 | `clap_usage` | 2.0 | Usage spec generation | Generates `.usage.kdl` output from clap `Command` |
 | `usage-lib` | 2.16 | Parse `.usage.kdl` specs | `default-features = false` (skip docs/tera/roff) |
+| `kdl` | 6.5 | Parse Presage companion documents | Runtime dependency |
 | `ratatui` | 0.30 | TUI framework | Provides `Frame`, `Terminal`, widgets, layout |
 | `crossterm` | 0.29 | Terminal backend + events | `event-stream` feature enabled |
 | `ratatui-interact` | 0.4 | UI components | `TreeView`, `TreeNode`, `FocusManager`, `ListPickerState` |
@@ -216,6 +222,7 @@ Semantic color palette (~80 lines). `UiColors` is derived from the active `Theme
 | `color-eyre` | 0.6 | Error reporting | Pretty error messages with backtraces |
 | `insta` | 1 | Snapshot testing (dev) | Full terminal output comparison |
 | `pretty_assertions` | 1 | Test diffs (dev) | Better assertion failure output |
+| `tempfile` | 3 | Temporary documents in tests (dev) | Presage and provider tests |
 
 ### Why `usage-lib` With No Default Features
 

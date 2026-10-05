@@ -576,3 +576,7 @@ Use `--theme auto --theme-light catppuccin-latte --theme-dark dracula` for autom
 The whole frame receives the palette foreground/background before widgets render. No terminal OSC palette mutation is used. The execution view receives the same base background while retaining child terminal colours.
 
 Mouse selection of a theme disables automatic appearance changes. Shift+T opens the theme picker, including terminals that report it as lowercase t with the Shift modifier.
+
+## Presage companion documents
+
+Presage is optional metadata stored in KDL beside the Usage-driven form. The command grammar remains in Usage. Documents can bind fixed or executable choice lists, defaults, locks, validation, composition mode, and theme settings to existing field identifiers. Select one document by explicit path, user application-data, resolved executable sidecar, then shared application-data locations. Do not merge documents or search the current directory. An invalid selected document is an error; no matching document preserves ordinary Usage behavior. See `PRESAGE.md` for filenames, syntax, provider responses, selector enumeration, and platform directory rules.

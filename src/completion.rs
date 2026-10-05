@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::companion::List;
 use crate::fields::field_id;
 use serde::Deserialize;
 use serde_json::Value;
@@ -69,19 +70,30 @@ fn run(complete: &SpecComplete, context: &Value) -> Option<Choices> {
     ))
 }
 
+fn run_list(list: &List, context: &Value) -> Option<Choices> {
+    match list {
+        List::Fixed(choices) => Some(
+            choices
+                .iter()
+                .map(|choice| (choice.value.clone(), choice.description.clone()))
+                .unzip(),
+        ),
+        List::Provider { executable, argv } => {
+            let bytes = crate::provider::run_with_args(executable, argv, context).ok()?;
+            let response: Response = serde_json::from_slice(&bytes).ok()?;
+            (response.version == 1).then(|| {
+                response
+                    .choices
+                    .into_iter()
+                    .map(|choice| (choice.value, choice.description))
+                    .unzip()
+            })
+        }
+    }
+}
+
 impl App {
     pub fn start_completion(&mut self, flag: bool, index: usize, name: &str, column: u16) -> bool {
-        let Some(complete) = self.find_completion(name).cloned() else {
-            return false;
-        };
-        if complete.run.is_none()
-            && !complete
-                .type_
-                .as_deref()
-                .is_some_and(|s| s.starts_with("tuisage-json-v1:"))
-        {
-            return false;
-        }
         let field = if flag {
             let Some(spec) = self.visible_flags().get(index).copied() else {
                 return false;
@@ -93,12 +105,45 @@ impl App {
             };
             field_id(&self.command_path, "args", &arg.name, false)
         };
+        let list = self
+            .companion
+            .as_ref()
+            .and_then(|companion| {
+                companion
+                    .fields
+                    .get(&field)
+                    .and_then(|id| companion.lists.get(id))
+            })
+            .cloned();
+        let complete = self.find_completion(name).cloned();
+        if list.is_none() {
+            let Some(complete) = complete.as_ref() else {
+                return false;
+            };
+            if complete.run.is_none()
+                && !complete
+                    .type_
+                    .as_deref()
+                    .is_some_and(|s| s.starts_with("tuisage-json-v1:"))
+            {
+                return false;
+            }
+        }
+        let immediate = match list.as_ref() {
+            Some(List::Fixed(choices)) => Some(
+                choices
+                    .iter()
+                    .map(|choice| (choice.value.clone(), choice.description.clone()))
+                    .unzip(),
+            ),
+            _ => None,
+        };
         let context = crate::provider::context(self, Some(&field));
         self.completion_generation += 1;
         let generation = self.completion_generation;
         let pending = Pending {
             generation,
-            ready: false,
+            ready: immediate.is_some(),
             flag,
             index,
             name: name.into(),
@@ -106,27 +151,49 @@ impl App {
             context: context.clone(),
         };
         let tx = self.completion_tx.clone();
-        std::thread::spawn(move || {
-            let choices = run(&complete, &context);
-            let _ = tx.send(ResultMessage {
-                generation,
-                choices,
+        if immediate.is_none() {
+            let list = list.clone();
+            std::thread::spawn(move || {
+                let choices = match list.as_ref() {
+                    Some(list) => run_list(list, &context),
+                    None => complete
+                        .as_ref()
+                        .and_then(|complete| run(complete, &context)),
+                };
+                let _ = tx.send(ResultMessage {
+                    generation,
+                    choices,
+                });
             });
-        });
+        }
         self.pending_completion = Some(pending);
         let value = self.completion_value(flag, index);
+        let (choices, descriptions) = immediate.unwrap_or_default();
         if flag {
             if self.flag_panel.choice_select_index() == Some(index) {
-                self.flag_panel.update_completion_choices(vec![], vec![]);
-            } else {
                 self.flag_panel
-                    .open_completion_select(index, vec![], vec![], &value, column);
+                    .update_completion_choices(choices, descriptions);
+            } else {
+                self.flag_panel.open_completion_select(
+                    index,
+                    choices,
+                    descriptions,
+                    &value,
+                    column,
+                );
             }
+            self.flag_panel
+                .set_completion_loading(!self.pending_completion.as_ref().unwrap().ready);
         } else if self.arg_panel.choice_select_index() == Some(index) {
-            self.arg_panel.update_completion_choices(vec![], vec![]);
+            self.arg_panel
+                .update_completion_choices(choices, descriptions);
+            self.arg_panel
+                .set_completion_loading(!self.pending_completion.as_ref().unwrap().ready);
         } else {
             self.arg_panel
-                .open_completion_select(index, vec![], vec![], &value, column);
+                .open_completion_select(index, choices, descriptions, &value, column);
+            self.arg_panel
+                .set_completion_loading(!self.pending_completion.as_ref().unwrap().ready);
         }
         true
     }
@@ -195,9 +262,11 @@ impl App {
             if pending.flag {
                 self.flag_panel
                     .update_completion_choices(choices, descriptions);
+                self.flag_panel.set_completion_loading(false);
             } else {
                 self.arg_panel
                     .update_completion_choices(choices, descriptions);
+                self.arg_panel.set_completion_loading(false);
             }
             if let Some(pending) = self.pending_completion.as_mut() {
                 pending.ready = true;
@@ -211,6 +280,119 @@ impl App {
 mod tests {
     use super::*;
     use crate::app::{FlagValue, Focus};
+    use crate::companion::{Choice, Companion};
+
+    #[test]
+    fn fixed_presage_list_completes_the_qualified_field_immediately() {
+        let spec: usage::Spec = "name \"demo\"\narg \"[region]\"".parse().unwrap();
+        let mut app = App::new(spec);
+        let mut companion = Companion::default();
+        companion.lists.insert(
+            "regions".into(),
+            List::Fixed(vec![Choice {
+                value: "eu-west-1".into(),
+                description: Some("Ireland".into()),
+            }]),
+        );
+        companion
+            .fields
+            .insert("root/args/region".into(), "regions".into());
+        app.companion = Some(companion);
+        app.set_focus(Focus::Args);
+
+        assert!(app.start_completion(false, 0, "region", 0));
+        assert!(app.pending_completion.as_ref().unwrap().ready);
+        assert_eq!(
+            app.arg_panel.filtered_choices(),
+            vec![(0, "eu-west-1".into())]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn provider_list_receives_literal_arguments_and_keeps_empty_unicode_values() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("provider");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\nprintf '{\"version\":1,\"choices\":[{\"value\":\"%s\"},{\"value\":\"\"},{\"value\":\"Zürich\"}]}' \"$1\"\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        let list = List::Provider {
+            executable: program,
+            argv: vec!["two words; $(literal)".into()],
+        };
+
+        let (values, _) = run_list(&list, &serde_json::json!({})).unwrap();
+        assert_eq!(values, ["two words; $(literal)", "", "Zürich"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_provider_has_no_choices_and_fixed_empty_list_is_valid() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("provider");
+        std::fs::write(&program, "#!/bin/sh\nexit 3\n").unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+
+        assert!(run_list(
+            &List::Provider {
+                executable: program,
+                argv: vec![],
+            },
+            &serde_json::json!({}),
+        )
+        .is_none());
+        assert_eq!(
+            run_list(&List::Fixed(vec![]), &serde_json::json!({})),
+            Some((vec![], vec![]))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_presage_provider_keeps_manual_entry_open() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("provider");
+        std::fs::write(&program, "#!/bin/sh\nexit 3\n").unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        let spec: usage::Spec = "name \"demo\"\narg \"[region]\"".parse().unwrap();
+        let mut app = App::new(spec);
+        let mut companion = Companion::default();
+        companion.lists.insert(
+            "regions".into(),
+            List::Provider {
+                executable: program,
+                argv: vec![],
+            },
+        );
+        companion
+            .fields
+            .insert("root/args/region".into(), "regions".into());
+        app.companion = Some(companion);
+        app.arg_values[0].value = "typed".into();
+        app.set_focus(Focus::Args);
+
+        assert!(app.start_completion(false, 0, "region", 0));
+        app.wait_for_completion();
+        assert!(app.is_choosing());
+        assert_eq!(app.arg_panel.choice_select_text(), "typed");
+        assert!(app.arg_panel.filtered_choices().is_empty());
+    }
+
     #[test]
     fn legacy_provider_receives_current_context_and_stale_result_is_ignored() {
         let spec: usage::Spec = "name \"demo\"\nflag \"--backend <backend>\" global=#true\narg \"[service]\"\ncomplete \"service\" run=\"printf '%s' \\\"$TUISAGE_CONTEXT\\\"\"".parse().unwrap();

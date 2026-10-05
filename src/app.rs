@@ -220,6 +220,7 @@ impl UiLayout {
 /// Main application state.
 pub struct App {
     pub spec: Spec,
+    pub companion: Option<crate::companion::Companion>,
     pub pending_completion: Option<crate::completion::Pending>,
     pub completion_generation: u64,
     pub completion_tx: std::sync::mpsc::Sender<crate::completion::ResultMessage>,
@@ -329,6 +330,7 @@ impl App {
         let (completion_tx, completion_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             spec,
+            companion: None,
             initial_fields: Vec::new(),
             submission_error: None,
             pending_completion: None,

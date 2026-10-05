@@ -9,6 +9,7 @@ A terminal UI for running [mise tasks](https://mise.jdx.dev/tasks/) or other com
 - **Execute commands** — Runs in an embedded terminal so you can see the output, then return to the UI.
 - **Fuzzy filter** — Press `/` to activate search mode, or start typing in a "select" box. Uses [nucleo](https://crates.io/crates/nucleo-matcher) for fzf-style matching.
 - **Dynamic completions** — Supports running a custom command to generate completion values. See the spec for the ["complete" statement](https://usage.jdx.dev/spec/reference/complete).
+- **Presage companions:** Optionally add named choices, providers, defaults, validation and presentation settings without changing the command's Usage grammar. See [PRESAGE.md](PRESAGE.md).
 - **Mouse support** — Click to select, or mouse wheel to scroll up and down.
 - **Themes** — Press "T" or click the name to open the theme selector. Uses [ratatui-themes](https://crates.io/crates/ratatui-themes).
 
@@ -93,6 +94,14 @@ tuisage --cmd "docker compose" --spec-file docker-compose.usage.kdl
 
 Use `--defaults JSON` to initialize fields from an object, or `--defaults @PATH` to read that object from a file. Keys may use unqualified names when they identify one field, or qualified identifiers such as `commands/run/args/name`. Each entry has a `value` and an optional `locked` boolean. Locked values cannot be changed through editing, mouse selection, completion, or reset. Empty strings are retained as explicit values.
 
+### Presage companion documents
+
+Presage is optional metadata alongside Usage. It can supply named choice lists, executable providers, defaults, locks, validation, composition mode and theme settings. Documents use KDL and are named `<command>.tuisage.kdl`; selector documents use `<command>.<selector>.tuisage.kdl`. TuiSage selects one document by the documented cascade and never merges documents or searches the current directory. Usage remains the command grammar, and Usage-only commands keep their existing behavior.
+
+Providers and validators run as separate executables with literal arguments and structured JSON context. Review companion documents and executable permissions before installing them. See [PRESAGE.md](PRESAGE.md) for discovery, selectors, document syntax and provider responses.
+
+To query the selected document and available selectors without opening the interface, run `tuisage --presage -- mytool --usage`.
+
 ## CLI Reference
 
 | Flag | Description |
@@ -101,6 +110,9 @@ Use `--defaults JSON` to initialize fields from an object, or `--defaults @PATH`
 | `--spec-file <FILE>` | Read usage spec from a file |
 | `--cmd <CMD>` | Base command to build (overrides the spec's binary name) |
 | `--usage` | Generate usage spec for TuiSage itself |
+| `--presage [PATH]` | Query Presage, select one document file, or prepend a directory to discovery |
+| `--selector <ID>` | Select the command's named companion document |
+| `--execute` | Override a companion's default composition mode |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
 
@@ -166,6 +178,7 @@ This README presents the main documentation intended for users. Other documents 
 | **REQUIREMENTS.md** | High-level goals, features, and user stories |
 | **SPECIFICATION.md** | Detailed behavioral specification (UI, interactions, data flow) |
 | **IMPLEMENTATION.md** | Architecture, code structure, and development state |
+| **PRESAGE.md** | Optional KDL companion documents and provider contract |
 
 ## Dependencies
 
@@ -182,8 +195,10 @@ This README presents the main documentation intended for users. Other documents 
 | [portable-pty](https://crates.io/crates/portable-pty) | Cross-platform pseudo-terminal for command execution |
 | [tui-term](https://crates.io/crates/tui-term) | Pseudo-terminal widget for embedded terminal output |
 | [vt100](https://crates.io/crates/vt100) | Terminal emulation (VT100 parser) |
+| [kdl](https://crates.io/crates/kdl) | Presage companion document parser |
 | [color-eyre](https://crates.io/crates/color-eyre) | Error reporting |
 | [insta](https://crates.io/crates/insta) | Snapshot testing (dev) |
+| [tempfile](https://crates.io/crates/tempfile) | Temporary documents in tests (dev) |
 
 ## Native command composition
 

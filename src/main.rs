@@ -7,6 +7,7 @@ use clap::{CommandFactory, Parser};
 
 mod app;
 mod command_builder;
+mod companion;
 mod completion;
 mod components;
 mod defaults;
@@ -80,9 +81,21 @@ struct Args {
     #[arg(long)]
     defaults: Option<String>,
 
-    /// Return executable and ordered argv as JSON without executing
+    /// Query Presage (no value), or select a document file or search directory
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    presage: Vec<std::ffi::OsString>,
+
+    /// Companion selector, selecting <command>.<selector>.tuisage.kdl
     #[arg(long)]
+    selector: Option<String>,
+
+    /// Return executable and ordered argv as JSON without executing
+    #[arg(long, conflicts_with = "execute")]
     compose: bool,
+
+    /// Execute the command even if the companion defaults to composition
+    #[arg(long)]
+    execute: bool,
 
     /// Startup theme name, or auto with --theme-light and --theme-dark
     #[arg(long)]
@@ -105,6 +118,24 @@ fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
     let args = Args::parse();
+    let explicit_paths: Vec<_> = args
+        .presage
+        .iter()
+        .filter(|path| !path.is_empty())
+        .map(std::path::Path::new)
+        .collect();
+    if explicit_paths.len() > 1 {
+        return Err(color_eyre::eyre::eyre!(
+            "--presage accepts only one explicit file or directory"
+        ));
+    }
+    let explicit = explicit_paths.first().copied();
+    let query = args.presage.iter().any(|path| path.is_empty());
+    if args.selector.is_some() && explicit.is_some_and(|path| !path.is_dir()) {
+        return Err(color_eyre::eyre::eyre!(
+            "--selector requires a directory, not an explicit --presage file"
+        ));
+    }
 
     // Handle --usage flag to output usage spec
     if args.usage {
@@ -117,9 +148,6 @@ fn main() -> color_eyre::Result<()> {
         print!("{}", String::from_utf8_lossy(&buf));
         return Ok(());
     }
-
-    let theme_selection =
-        theme::ThemeSelection::parse(args.theme.as_deref(), args.theme_light, args.theme_dark)?;
 
     // Determine the usage spec source
     let has_spec_cmd = !args.spec_cmd.is_empty();
@@ -165,12 +193,6 @@ fn main() -> color_eyre::Result<()> {
         spec.bin = cmd.clone();
     }
 
-    let initial = args
-        .defaults
-        .as_deref()
-        .map(|text| defaults::parse(text, &spec))
-        .transpose()?;
-
     let base = if spec.bin.is_empty() {
         &spec.name
     } else {
@@ -181,6 +203,64 @@ fn main() -> color_eyre::Result<()> {
     if base_parts.first().is_none_or(|part| part.is_empty()) {
         return Err(color_eyre::eyre::eyre!("Usage spec has no executable"));
     }
+
+    let producer = args.spec_cmd.first().unwrap_or(&base_parts[0]);
+    let executable =
+        companion::executable(producer).unwrap_or_else(|| std::path::PathBuf::from(producer));
+    let selectors = companion::discover_selectors_in(&executable, explicit)?;
+    let companion_path = companion::discover(&executable, explicit, args.selector.as_deref())?;
+    let companion = companion_path
+        .as_deref()
+        .map(|path| companion::Companion::load_with_selectors(path, &spec, &selectors))
+        .transpose()?;
+    if query {
+        println!(
+            "{}",
+            serde_json::json!({
+                "version": 1,
+                "path": companion_path.as_ref().map(|path| path.to_string_lossy().to_string()),
+                "selectors": selectors.iter().map(|(name, path)| (name, path.to_string_lossy().to_string())).collect::<std::collections::BTreeMap<_, _>>(),
+            })
+        );
+        return Ok(());
+    }
+
+    let theme_name = args
+        .theme
+        .as_deref()
+        .or_else(|| companion.as_ref().and_then(|doc| doc.theme.as_deref()));
+    let light = args.theme_light.or_else(|| {
+        companion.as_ref().and_then(|doc| {
+            doc.theme_light
+                .as_deref()
+                .and_then(|name| name.parse().ok())
+        })
+    });
+    let dark = args.theme_dark.or_else(|| {
+        companion
+            .as_ref()
+            .and_then(|doc| doc.theme_dark.as_deref().and_then(|name| name.parse().ok()))
+    });
+    let theme_selection = if theme_name == Some("auto") {
+        theme::ThemeSelection::parse(theme_name, light, dark)?
+    } else {
+        theme::ThemeSelection::parse(theme_name, args.theme_light, args.theme_dark)?
+    };
+    let compose = if args.execute {
+        false
+    } else if args.compose {
+        true
+    } else {
+        companion
+            .as_ref()
+            .and_then(|doc| doc.compose)
+            .unwrap_or(false)
+    };
+    let validator = args
+        .validate
+        .clone()
+        .or_else(|| companion.as_ref().and_then(|doc| doc.validator.clone()));
+    let initial = merge_defaults(&spec, companion.as_ref(), args.defaults.as_deref())?;
 
     let tty_path = if cfg!(windows) { "CONOUT$" } else { "/dev/tty" };
     let tty = std::fs::OpenOptions::new()
@@ -198,6 +278,7 @@ fn main() -> color_eyre::Result<()> {
     )?;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(tty))?;
     let mut app = App::with_theme(spec, theme_selection.initial());
+    app.companion = companion;
     app.automatic_theme = theme_selection.is_automatic();
     if let Some(initial) = initial {
         app.configure_defaults(initial);
@@ -206,8 +287,8 @@ fn main() -> color_eyre::Result<()> {
     let result = run_event_loop(
         &mut terminal,
         &mut app,
-        args.compose,
-        args.validate.as_deref(),
+        compose,
+        validator.as_deref(),
         appearance.as_ref(),
     );
     drop(terminal);
@@ -220,10 +301,51 @@ fn main() -> color_eyre::Result<()> {
             stdout.write_all(b"\n")?;
             stdout.flush()?;
         }
-        None if args.compose => std::process::exit(130),
+        None if compose => std::process::exit(130),
         None => {}
     }
     Ok(())
+}
+
+fn merge_defaults(
+    spec: &usage::Spec,
+    companion: Option<&companion::Companion>,
+    source: Option<&str>,
+) -> color_eyre::Result<Option<Vec<defaults::InitialField>>> {
+    let mut values = companion
+        .map(|doc| doc.defaults.clone())
+        .unwrap_or_default();
+    if let Some(source) = source {
+        let content = if let Some(path) = source.strip_prefix('@') {
+            std::fs::read_to_string(path)?
+        } else {
+            source.to_owned()
+        };
+        let overrides: serde_json::Value = serde_json::from_str(&content)?;
+        let overrides = overrides
+            .as_object()
+            .ok_or_else(|| color_eyre::eyre::eyre!("--defaults requires a JSON object"))?;
+        for (id, value) in overrides {
+            if let Some(existing) = values.get(id) {
+                if existing["locked"] == true
+                    && (existing["value"] != value["value"] || value["locked"] != true)
+                {
+                    return Err(color_eyre::eyre::eyre!(
+                        "CLI default conflicts with locked companion field {id}"
+                    ));
+                }
+            }
+            values.insert(id.clone(), value.clone());
+        }
+    }
+    if values.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(defaults::parse(
+            &serde_json::to_string(&values)?,
+            spec,
+        )?))
+    }
 }
 
 /// Run a shell command and return its stdout as a string.
@@ -389,6 +511,74 @@ fn run_event_loop(
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn presage_query_and_explicit_directory_leave_spec_arguments_intact() {
+        let query = Args::try_parse_from([
+            "tuisage",
+            "--presage",
+            "--selector",
+            "proxmoxlxc",
+            "--cmd",
+            "lcc",
+            "lcc",
+            "--usage",
+        ])
+        .unwrap();
+        assert_eq!(query.presage, vec![std::ffi::OsString::new()]);
+        assert_eq!(query.selector.as_deref(), Some("proxmoxlxc"));
+        assert_eq!(query.spec_cmd, ["lcc", "--usage"]);
+
+        let directory_query = Args::try_parse_from([
+            "tuisage",
+            "--presage",
+            "/tmp/forms",
+            "--presage",
+            "--selector",
+            "staging",
+            "--",
+            "demo",
+            "--usage",
+        ])
+        .unwrap();
+        assert_eq!(
+            directory_query.presage,
+            vec![
+                std::ffi::OsString::from("/tmp/forms"),
+                std::ffi::OsString::new()
+            ]
+        );
+        assert_eq!(directory_query.spec_cmd, ["demo", "--usage"]);
+    }
+
+    #[test]
+    fn cli_defaults_override_unlocked_and_reject_locked_companion_values() {
+        let spec: usage::Spec = "name \"demo\"\narg \"[region]\"".parse().unwrap();
+        let mut document = companion::Companion::default();
+        document.defaults.insert(
+            "root/args/region".into(),
+            serde_json::json!({"value": "Sydney", "locked": false}),
+        );
+        let merged = merge_defaults(
+            &spec,
+            Some(&document),
+            Some(r#"{"root/args/region":{"value":"Zürich"}}"#),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(merged[0].value, "Zürich");
+
+        document.defaults.insert(
+            "root/args/region".into(),
+            serde_json::json!({"value": "Sydney", "locked": true}),
+        );
+        assert!(merge_defaults(
+            &spec,
+            Some(&document),
+            Some(r#"{"root/args/region":{"value":"Zürich","locked":true}}"#)
+        )
+        .is_err());
+    }
 
     #[test]
     fn compose_serialization_preserves_exact_arguments() {

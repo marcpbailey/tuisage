@@ -89,15 +89,25 @@ pub fn context(app: &App, field: Option<&str>) -> Value {
 
 /// Run an explicit provider with JSON stdin, collecting output concurrently.
 pub fn run(program: &std::path::Path, request: &Value) -> color_eyre::Result<Vec<u8>> {
-    run_with_timeout(program, request, Duration::from_secs(5))
+    run_with_args(program, &[], request)
+}
+
+pub fn run_with_args(
+    program: &std::path::Path,
+    argv: &[String],
+    request: &Value,
+) -> color_eyre::Result<Vec<u8>> {
+    run_with_timeout(program, argv, request, Duration::from_secs(5))
 }
 
 fn run_with_timeout(
     program: &std::path::Path,
+    argv: &[String],
     request: &Value,
     timeout: Duration,
 ) -> color_eyre::Result<Vec<u8>> {
     let mut child = Command::new(program)
+        .args(argv)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -190,7 +200,12 @@ mod tests {
         std::fs::write(&path, "#!/bin/sh\ncat >/dev/null\nsleep 0.3 &\nexit 0\n").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
         let started = Instant::now();
-        let result = run_with_timeout(&path, &json!({"version": 1}), Duration::from_millis(50));
+        let result = run_with_timeout(
+            &path,
+            &[],
+            &json!({"version": 1}),
+            Duration::from_millis(50),
+        );
         std::fs::remove_file(path).unwrap();
         assert!(result.unwrap_err().to_string().contains("timed out"));
         assert!(started.elapsed() < Duration::from_millis(250));

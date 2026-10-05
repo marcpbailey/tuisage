@@ -208,6 +208,10 @@ impl ArgPanelComponent {
         self.base.update_completion_choices(choices, descriptions);
     }
 
+    pub fn set_completion_loading(&mut self, loading: bool) {
+        self.base.choice_select.set_loading(loading);
+    }
+
     pub fn open_completion_select(
         &mut self,
         index: usize,
