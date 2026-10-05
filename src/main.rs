@@ -57,6 +57,31 @@ impl ComposedCommand {
     }
 }
 
+fn strip_clap_usage_metadata(nodes: &mut Vec<kdl::KdlNode>) {
+    // clap_usage emits Clap settings that the Usage model does not consume.
+    nodes.retain(|node| node.name().value() != "arg_required_else_help");
+    for node in nodes {
+        if node.name().value() == "flag" {
+            node.entries_mut().retain(|entry| {
+                !matches!(
+                    entry.name().map(|name| name.value()),
+                    Some("action" | "builtin")
+                )
+            });
+        }
+        if let Some(children) = node.children_mut() {
+            strip_clap_usage_metadata(children.nodes_mut());
+        }
+    }
+}
+
+fn parse_generated_usage_spec(source: &str) -> color_eyre::Result<usage::Spec> {
+    let mut document: kdl::KdlDocument = source.parse()?;
+    // These Clap settings do not affect the form TuiSage builds.
+    strip_clap_usage_metadata(document.nodes_mut());
+    Ok(document.to_string().parse::<usage::Spec>()?)
+}
+
 /// TUI application for interactively building CLI commands from usage specs
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -169,7 +194,7 @@ fn main() -> color_eyre::Result<()> {
         // Join the arguments into a single command string and run it
         let spec_cmd = args.spec_cmd.join(" ");
         let output = run_spec_command(&spec_cmd)?;
-        output.parse::<usage::Spec>().map_err(|e| {
+        parse_generated_usage_spec(&output).map_err(|e| {
             color_eyre::eyre::eyre!(
                 "Failed to parse usage spec from command '{}': {}",
                 spec_cmd,
