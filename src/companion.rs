@@ -361,46 +361,81 @@ pub fn discover(
 fn directories(command: &Path) -> Vec<PathBuf> {
     directory_candidates(
         command,
-        cfg!(target_os = "macos"),
+        if cfg!(target_os = "macos") {
+            Platform::MacOS
+        } else if cfg!(windows) {
+            Platform::Windows
+        } else {
+            Platform::Linux
+        },
         std::env::var_os("HOME").map(PathBuf::from),
         std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
         std::env::var_os("XDG_DATA_DIRS"),
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+        std::env::var_os("PROGRAMDATA").map(PathBuf::from),
     )
+}
+
+#[derive(Clone, Copy)]
+enum Platform {
+    MacOS,
+    Linux,
+    Windows,
 }
 
 fn directory_candidates(
     command: &Path,
-    macos: bool,
+    platform: Platform,
     home: Option<PathBuf>,
     data_home: Option<PathBuf>,
     data_dirs: Option<std::ffi::OsString>,
+    local_app_data: Option<PathBuf>,
+    program_data: Option<PathBuf>,
 ) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut shared = Vec::new();
     let home = home.filter(|path| path.is_absolute());
-    if macos {
-        if let Some(ref home) = home {
-            paths.push(home.join("Library/Application Support/TuiSage/commands"));
+    match platform {
+        Platform::MacOS => {
+            if let Some(ref home) = home {
+                paths.push(home.join("Library/Application Support/TuiSage/commands"));
+            }
         }
-    } else if let Some(root) = data_home.filter(|path| path.is_absolute()) {
-        paths.push(root.join("tuisage/commands"));
-    } else if let Some(ref home) = home {
-        paths.push(home.join(".local/share/tuisage/commands"));
+        Platform::Linux => {
+            if let Some(root) = data_home.filter(|path| path.is_absolute()) {
+                paths.push(root.join("tuisage/commands"));
+            } else if let Some(ref home) = home {
+                paths.push(home.join(".local/share/tuisage/commands"));
+            }
+        }
+        Platform::Windows => {
+            if let Some(root) = local_app_data.filter(|path| path.is_absolute()) {
+                paths.push(root.join("TuiSage/commands"));
+            }
+        }
     }
     if command.is_absolute() {
         paths.push(command.parent().unwrap().to_owned());
     }
-    if macos {
-        shared.push(PathBuf::from(
-            "/Library/Application Support/TuiSage/commands",
-        ));
-    } else {
-        let dirs = data_dirs
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
-        for dir in std::env::split_paths(&dirs) {
-            if dir.is_absolute() {
-                shared.push(dir.join("tuisage/commands"));
+    match platform {
+        Platform::MacOS => {
+            shared.push(PathBuf::from(
+                "/Library/Application Support/TuiSage/commands",
+            ));
+        }
+        Platform::Linux => {
+            let dirs = data_dirs
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+            for dir in std::env::split_paths(&dirs) {
+                if dir.is_absolute() {
+                    shared.push(dir.join("tuisage/commands"));
+                }
+            }
+        }
+        Platform::Windows => {
+            if let Some(root) = program_data.filter(|path| path.is_absolute()) {
+                shared.push(root.join("TuiSage/commands"));
             }
         }
     }
@@ -477,30 +512,44 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn invalid_user_roots_never_introduce_working_directory_lookup() {
-        for macos in [false, true] {
+        let command = std::env::temp_dir().join("tuisage-test/bin/demo");
+        for platform in [Platform::Linux, Platform::MacOS, Platform::Windows] {
             for home in [None, Some(PathBuf::new()), Some(PathBuf::from("relative"))] {
-                let paths = directory_candidates(Path::new("/bin/demo"), macos, home, None, None);
+                let paths = directory_candidates(
+                    &command,
+                    platform,
+                    home,
+                    None,
+                    None,
+                    Some(PathBuf::from("relative-local")),
+                    Some(PathBuf::from("relative-shared")),
+                );
                 assert!(paths.iter().all(|path| path.is_absolute()), "{paths:?}");
             }
         }
     }
 
     #[test]
+    #[cfg(unix)]
     fn linux_invalid_data_home_uses_absolute_home_fallback() {
         for data_home in [None, Some(PathBuf::new()), Some(PathBuf::from("relative"))] {
+            let command = std::env::temp_dir().join("tuisage-test/bin/demo");
             let paths = directory_candidates(
-                Path::new("/bin/demo"),
-                false,
+                &command,
+                Platform::Linux,
                 Some(PathBuf::from("/home/user")),
                 data_home,
                 Some("relative:/shared".into()),
+                None,
+                None,
             );
             assert_eq!(
                 paths,
                 vec![
                     PathBuf::from("/home/user/.local/share/tuisage/commands"),
-                    PathBuf::from("/bin"),
+                    command.parent().unwrap().to_owned(),
                     PathBuf::from("/shared/tuisage/commands")
                 ]
             );
@@ -508,38 +557,80 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn platform_data_directories_keep_user_sidecar_shared_order() {
+        let command = std::env::temp_dir().join("tuisage-test/bin/demo");
         let linux = directory_candidates(
-            Path::new("/bin/demo"),
-            false,
+            &command,
+            Platform::Linux,
             None,
             Some(PathBuf::from("/data")),
             Some("".into()),
+            None,
+            None,
         );
         assert_eq!(
             linux,
             vec![
                 PathBuf::from("/data/tuisage/commands"),
-                PathBuf::from("/bin"),
+                command.parent().unwrap().to_owned(),
                 PathBuf::from("/usr/local/share/tuisage/commands"),
                 PathBuf::from("/usr/share/tuisage/commands")
             ]
         );
         let mac = directory_candidates(
-            Path::new("/bin/demo"),
-            true,
+            &command,
+            Platform::MacOS,
             Some(PathBuf::from("/Users/user")),
             Some(PathBuf::from("/ignored")),
             Some("/ignored".into()),
+            None,
+            None,
         );
         assert_eq!(
             mac,
             vec![
                 PathBuf::from("/Users/user/Library/Application Support/TuiSage/commands"),
-                PathBuf::from("/bin"),
+                command.parent().unwrap().to_owned(),
                 PathBuf::from("/Library/Application Support/TuiSage/commands")
             ]
         );
+    }
+
+    #[test]
+    fn windows_data_directories_keep_user_sidecar_shared_order() {
+        let root = std::env::temp_dir().join("tuisage-windows-paths");
+        let local = root.join("AppData/Local");
+        let shared = root.join("ProgramData");
+        let command = root.join("bin/demo.exe");
+        let windows = directory_candidates(
+            &command,
+            Platform::Windows,
+            Some(root.join("ignored-home")),
+            Some(root.join("ignored-xdg")),
+            Some("ignored".into()),
+            Some(local.clone()),
+            Some(shared.clone()),
+        );
+        assert_eq!(
+            windows,
+            vec![
+                local.join("TuiSage/commands"),
+                command.parent().unwrap().to_owned(),
+                shared.join("TuiSage/commands")
+            ]
+        );
+
+        let no_roots = directory_candidates(
+            &command,
+            Platform::Windows,
+            None,
+            None,
+            None,
+            Some(PathBuf::from("relative-local")),
+            Some(PathBuf::from("relative-shared")),
+        );
+        assert_eq!(no_roots, vec![command.parent().unwrap().to_owned()]);
     }
 
     #[test]
