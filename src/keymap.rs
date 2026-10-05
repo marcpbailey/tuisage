@@ -44,7 +44,11 @@ impl Key {
                 "alt" => KeyModifiers::ALT,
                 "shift" => KeyModifiers::SHIFT,
                 "cmd" | "super" => KeyModifiers::SUPER,
-                _ => return Err(color_eyre::eyre::eyre!("Unsupported key modifier in '{value}'")),
+                _ => {
+                    return Err(color_eyre::eyre::eyre!(
+                        "Unsupported key modifier in '{value}'"
+                    ))
+                }
             };
         }
 
@@ -64,7 +68,11 @@ impl Key {
             _ => return Err(color_eyre::eyre::eyre!("Unsupported key syntax '{value}'")),
         };
 
-        Ok(Self { code, modifiers, keypad })
+        Ok(Self {
+            code,
+            modifiers,
+            keypad,
+        })
     }
 
     fn matches(self, event: KeyEvent) -> bool {
@@ -157,7 +165,10 @@ impl Keymap {
     }
 }
 
-fn default_path(xdg_config_home: Option<&std::ffi::OsStr>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+fn default_path(
+    xdg_config_home: Option<&std::ffi::OsStr>,
+    home: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
     let base = xdg_config_home
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
@@ -207,8 +218,12 @@ mod tests {
             keymap.resolve(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
             Some(NamedAction::Cancel)
         );
-        assert!(keymap.apply("[bindings]\n\"bad+key\" = \"submit\"").is_err());
-        assert!(keymap.apply("[bindings]\n\"alt+s\" = \"invented\"").is_err());
+        assert!(keymap
+            .apply("[bindings]\n\"bad+key\" = \"submit\"")
+            .is_err());
+        assert!(keymap
+            .apply("[bindings]\n\"alt+s\" = \"invented\"")
+            .is_err());
         assert!(keymap.apply("bad = [").is_err());
     }
 
@@ -219,7 +234,10 @@ mod tests {
             Some(PathBuf::from("/config/tuisage/keymap.toml"))
         );
         assert_eq!(
-            default_path(Some(std::ffi::OsStr::new("")), Some(std::ffi::OsStr::new("/home/user"))),
+            default_path(
+                Some(std::ffi::OsStr::new("")),
+                Some(std::ffi::OsStr::new("/home/user"))
+            ),
             Some(PathBuf::from("/home/user/.config/tuisage/keymap.toml"))
         );
     }
