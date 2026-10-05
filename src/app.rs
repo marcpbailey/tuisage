@@ -1410,6 +1410,18 @@ impl App {
             return Action::None;
         }
 
+        // An open popup owns Enter for selection, ahead of global keymap bindings.
+        if key.code == KeyCode::Enter {
+            if self.is_theme_picking() {
+                return self.handle_theme_picker_key(key);
+            }
+            if self.is_choosing() {
+                if let Some(action) = self.handle_focused_panel_key(key) {
+                    return action;
+                }
+            }
+        }
+
         let focused_panel_is_handling_input = self.focused_panel_is_handling_input();
         let mapped_action = self.keymap.resolve(key);
         if mapped_action == Some(crate::keymap::NamedAction::Submit) {
@@ -4676,6 +4688,39 @@ cmd "other" {
         app.handle_key(enter);
         assert!(!app.is_choosing(), "Enter should close select box");
         assert_eq!(app.arg_values[0].value, "staging", "Should have selected staging");
+    }
+
+    #[test]
+    fn popup_enter_selects_even_when_keymap_maps_enter_to_submit() {
+        let mut app = App::new(sample_spec());
+        app.navigate_to_command(&["deploy"]);
+        app.set_focus(Focus::Args);
+        app.set_arg_index(0);
+
+        let enter = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_key(enter);
+        assert!(app.is_choosing());
+
+        let down = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Down,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        app.handle_key(down);
+
+        let keymap_path = std::env::temp_dir().join(format!(
+            "tuisage-popup-keymap-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&keymap_path, "[bindings]\n\"enter\" = \"submit\"\n").unwrap();
+        app.keymap = crate::keymap::Keymap::load(Some(&keymap_path)).unwrap();
+
+        assert_ne!(app.handle_key(enter), Action::Execute);
+        assert!(!app.is_choosing());
+        assert_eq!(app.arg_values[0].value, "dev");
+        std::fs::remove_file(keymap_path).unwrap();
     }
 
     #[test]
