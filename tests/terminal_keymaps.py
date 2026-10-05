@@ -84,7 +84,8 @@ def main():
         root = Path(directory)
         sample = root / "keymap.toml"
         sample.write_text(
-            '[bindings]\n"ctrl+r" = "submit"\n"cmd+enter" = "submit"\n'
+            '[bindings]\n"ctrl+r" = "submit"\n"shift+enter" = "submit"\n'
+            '"cmd+enter" = "submit"\n'
             '"keypad-enter" = "submit"\n"ctrl+c" = "cancel"\n"q" = "cancel"\n'
         )
         for name, keys in [
@@ -96,6 +97,19 @@ def main():
             run_case(root, name, keys, sample)
 
         run_case(root, "ordinary-enter", b"\r", sample, expect_submit=False)
+        no_default_keymap = {"XDG_CONFIG_HOME": str(root / "empty-config")}
+        for name, keys in [
+            ("default-shift-enter", b"\x1b[13;2u"),
+            ("default-cmd-enter", b"\x1b[13;9u"),
+            ("default-keypad-enter", b"\x1b[57414u"),
+        ]:
+            run_case(
+                root,
+                name,
+                keys,
+                environment=no_default_keymap,
+                expect_submit=False,
+            )
 
         config = root / "config"
         default_keymap = config / "tuisage/keymap.toml"

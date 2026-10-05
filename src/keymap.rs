@@ -92,9 +92,6 @@ impl Default for Keymap {
     fn default() -> Self {
         let bindings = [
             ("ctrl+r", NamedAction::Submit),
-            ("shift+enter", NamedAction::Submit),
-            ("cmd+enter", NamedAction::Submit),
-            ("keypad-enter", NamedAction::Submit),
             ("ctrl+c", NamedAction::Cancel),
             ("q", NamedAction::Cancel),
             ("tab", NamedAction::NextField),
@@ -181,12 +178,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtins_distinguish_main_modified_and_keypad_enter() {
+    fn modified_and_keypad_enter_are_not_builtin_submit_bindings() {
         let keymap = Keymap::default();
         assert_eq!(
             keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
             None
         );
+        assert_eq!(
+            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
+            None
+        );
+        assert_eq!(
+            keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SUPER)),
+            None
+        );
+        let mut keypad = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        keypad.state = KeyEventState::KEYPAD;
+        assert_eq!(keymap.resolve(keypad), None);
+    }
+
+    #[test]
+    fn modified_and_keypad_enter_can_be_enabled_by_configuration() {
+        let mut keymap = Keymap::default();
+        keymap
+            .apply(
+                "[bindings]\n\"shift+enter\" = \"submit\"\n\
+                 \"cmd+enter\" = \"submit\"\n\
+                 \"keypad-enter\" = \"submit\"",
+            )
+            .unwrap();
         assert_eq!(
             keymap.resolve(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
             Some(NamedAction::Submit)
