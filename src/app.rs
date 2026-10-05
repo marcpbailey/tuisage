@@ -1451,9 +1451,8 @@ impl App {
             return Action::None;
         }
 
-        match mapped_action {
-            Some(crate::keymap::NamedAction::Cancel) => return Action::Quit,
-            _ => {}
+        if let Some(crate::keymap::NamedAction::Cancel) = mapped_action {
+            return Action::Quit;
         }
 
         match key.code {
